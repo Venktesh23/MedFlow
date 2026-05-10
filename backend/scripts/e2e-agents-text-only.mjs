@@ -95,16 +95,32 @@ async function main() {
       assert(r.error?.code === "COMMAND_REQUIRED", `got ${r.error?.code}`);
     });
 
-    await test("create fails for unknown patient name", async () => {
+    await test("create auto-creates patient profile when name is new", async () => {
+      const unknownName = `TotallyUnknownPatientZZZ999_${suffix}`;
+      const slotTime = "10:17";
       const r = await runCalendarAgent(
-        `Schedule TotallyUnknownPatientZZZ999 for a follow-up on ${tomorrow} at 09:00`,
+        `Schedule ${unknownName} for a follow-up on ${tomorrow} at ${slotTime}`,
         { doctorName: DR_NAME },
       );
-      assert(!r.ok, "expected failure");
-      assert(r.error?.code === "PATIENT_NOT_FOUND", `got ${r.error?.code}`);
+      assert(r.ok, JSON.stringify(r.error));
+      const createdPatient = await Patient.findOne({
+        name: new RegExp(`^${unknownName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i"),
+      });
+      assert(createdPatient, "patient profile should be created");
+      const appt = await Appointment.findOne({
+        patientId: createdPatient._id,
+        date: tomorrow,
+        time: slotTime,
+      });
+      assert(appt, "appointment should exist");
+      await Appointment.findByIdAndDelete(appt._id);
+      await Patient.findByIdAndDelete(createdPatient._id);
     });
 
-    section("Calendar agent — happy path (agentic chain: parse → Mongo → optional Google Calendar)");
+    section("Calendar agent — happy path (agentic chain: parse → Mongo)");
+    /** Avoid stale appointments on `tomorrow` from earlier runs or partial edge tests. */
+    await Appointment.deleteMany({ date: tomorrow });
+
     await test("CREATE appointment via natural language", async () => {
       const cmd = `Schedule ${patientName} for a consultation on ${tomorrow} at 14:30`;
       const r = await runCalendarAgent(cmd, { doctorName: DR_NAME });
@@ -118,9 +134,10 @@ async function main() {
       assert(String(appt.time) === "14:30", `time was ${appt.time}`);
     });
 
-    await test("CONFLICT when overlapping slot same day", async () => {
+    await test("overlapping time slot rejected (single booking only)", async () => {
+      const otherPatient = `E2E Conflict Other Patient ${suffix}`;
       const r = await runCalendarAgent(
-        `Schedule ${patientName} for a follow-up on ${tomorrow} at 14:35 for 30 minutes`,
+        `Schedule ${otherPatient} for a follow-up on ${tomorrow} at 14:35 for 30 minutes`,
         { doctorName: DR_NAME },
       );
       assert(!r.ok, "expected scheduling conflict");

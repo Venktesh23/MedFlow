@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   createPatient,
+  deletePatient,
   getPatientById,
   listPatients,
   updatePatient,
@@ -19,5 +20,6 @@ router.put(
   requireFields(["name"]),
   asyncHandler(updatePatient),
 );
+router.delete("/:id", validateIdParam("id"), asyncHandler(deletePatient));
 
 export default router;

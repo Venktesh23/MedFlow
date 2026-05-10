@@ -1,6 +1,6 @@
 # MedFlow
 
-Full-stack agentic clinical assistant: React (Vite) frontend, Node.js Express API, MongoDB, and AI integrations (Anthropic Claude, Deepgram, Google Calendar).
+Full-stack agentic clinical assistant: React (Vite) frontend, Node.js Express API, MongoDB, and AI integrations (Anthropic Claude, Deepgram).
 
 ## Repository layout
 
@@ -25,7 +25,7 @@ Use a fixed sentence so scheduling parses reliably:
 Visit types: `follow-up`, `new-visit`, `lab-review`, `annual-physical`, `consultation`.  
 Example: `Schedule Maria Lopez for a follow-up on Monday at 14:30 for 30 minutes.`
 
-On the **Appointments** tab, **New appointment** offers **Type details** (patient name as plain text + date/time/type → calendar agent) or **Speak naturally** (same agent). The dashboard **Calendar Assistant** uses the same API: you can ask what’s on the schedule, add visits, reschedule, or cancel—use the patient’s name as stored in MedFlow.
+On the **Appointments** tab, use **Chat with calendar** or **Manage calendar** (voice). The dashboard **Calendar Assistant** uses the same API.
 
 **Visit session → clinical note**  
 Label each spoken turn in the live transcript:
@@ -50,7 +50,7 @@ Prompts live in `backend/src/prompts/calendarPrompt.js` and `backend/src/prompts
 
 - Node.js 18+
 - MongoDB
-- Optional: API keys for Deepgram, Anthropic Claude, Google Calendar (see `backend/.env.example`)
+- Optional: API keys for Deepgram and Anthropic Claude (see `backend/.env.example`)
 
 ## Install
 
@@ -98,8 +98,7 @@ npm run dev:frontend
 - `CLIENT_URL` — Frontend origin for CORS (e.g. `http://localhost:5173`)
 - `DEEPGRAM_API_KEY`
 - `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` (defaults to `claude-sonnet-4-6` if unset)
-- `GOOGLE_CALENDAR_ID`, `GOOGLE_SERVICE_ACCOUNT_KEY_PATH` (optional calendar sync)
-- `NODE_ENV`, `GOOGLE_CALENDAR_TIME_ZONE` as needed
+- `NODE_ENV` as needed
 
 ## Build frontend for production
 

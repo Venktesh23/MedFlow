@@ -1,16 +1,9 @@
 import { Appointment } from "../models/Appointment.js";
+import { Note } from "../models/Note.js";
 import { Patient } from "../models/Patient.js";
-import {
-  createCalendarEvent,
-  deleteCalendarEvent,
-  updateCalendarEvent,
-} from "../services/googleCalendarService.js";
-import { connectMongo } from "../services/mongoService.js";
+import { connectMongo, upsertPatient } from "../services/mongoService.js";
 import { parseCalendarCommand, isAnthropicConfigured } from "../services/claudeService.js";
-import {
-  addMinutesToTime,
-  checkConflict,
-} from "./utils/conflictDetection.js";
+import { addMinutesToTime, checkConflict } from "./utils/conflictDetection.js";
 
 function log(action, message, metadata) {
   const suffix = metadata ? ` ${JSON.stringify(metadata)}` : "";
@@ -79,12 +72,100 @@ function normalizeParsedCommand(parsed = {}) {
   };
 }
 
-async function parseCommand(command, scheduleSnapshot, conversationHistory) {
+const CANONICAL_VISIT_TYPES = new Set([
+  "follow-up",
+  "new-visit",
+  "lab-review",
+  "annual-physical",
+  "consultation",
+]);
+
+/** Map LLM or casual wording to a canonical MedFlow visit type, or null. */
+function mapLooseVisitType(raw) {
+  if (!raw || typeof raw !== "string") return null;
+  const t = raw.trim().toLowerCase();
+  if (CANONICAL_VISIT_TYPES.has(t)) return t;
+  const s = raw.trim();
+  if (/follow[\s-]?up/i.test(s)) return "follow-up";
+  if (/new\s*patient|initial|first\s*visit/i.test(s)) return "new-visit";
+  if (/lab\b/i.test(s)) return "lab-review";
+  if (/annual|physical|wellness|checkup/i.test(s)) return "annual-physical";
+  if (/consult|visit|appointment|check[\s-]?in/i.test(s)) return "consultation";
+  return null;
+}
+
+/**
+ * Normalize visit type and default to consultation when patient, date, and time are present.
+ */
+function applyCreateIntentDefaults(parsed) {
+  const out = { ...parsed };
+  const rawType = out.type != null ? String(out.type).trim() : "";
+
+  if (rawType && CANONICAL_VISIT_TYPES.has(rawType)) {
+    out.type = rawType;
+  } else {
+    out.type = mapLooseVisitType(rawType);
+  }
+
+  const hasPatient = Boolean(out.patientName?.trim());
+  const hasDate = Boolean(String(out.date || "").trim());
+  const hasTime = Boolean(String(out.time || "").trim());
+
+  if (hasPatient && hasDate && hasTime && !out.type) {
+    out.type = "consultation";
+    log("Parse", "Defaulted visit type to consultation (not specified in message)");
+  }
+
+  return out;
+}
+
+function missingCreateFields(parsed) {
+  const missing = [];
+  if (!parsed.patientName?.trim()) missing.push("patient name");
+  if (!String(parsed.date || "").trim()) missing.push("date");
+  if (!String(parsed.time || "").trim()) missing.push("time");
+  return missing;
+}
+
+async function buildNotesSnapshotForPrompt() {
+  try {
+    await connectMongo();
+    const notes = await Note.find({})
+      .populate("patientId")
+      .sort({ createdAt: -1 })
+      .limit(35)
+      .lean();
+
+    if (!notes.length) {
+      return "(No clinical notes stored yet.)";
+    }
+
+    const header = "patient\tdate\tassessment_excerpt";
+    const rows = notes.map((n) => {
+      const name = n.patientId?.name || "Unknown";
+      const date =
+        n.createdAt != null ? new Date(n.createdAt).toISOString().slice(0, 10) : "";
+      const assess = String(n.soapNote?.assessment || n.summary || "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 200);
+      return `${name}\t${date}\t${assess}`;
+    });
+
+    return `${header}\n${rows.join("\n")}`;
+  } catch {
+    return "(Could not load notes.)";
+  }
+}
+
+async function parseCommand(command, scheduleSnapshot, conversationHistory, parseOptions = {}) {
   let parsedObj = null;
   try {
     parsedObj = await parseCalendarCommand(command, {
       scheduleSnapshot,
       conversationHistory: conversationHistory || [],
+      interactionMode: parseOptions.interactionMode || "chat_assistant",
+      notesSnapshot: parseOptions.notesSnapshot,
     });
   } catch (err) {
     log("Parse", "Claude calendar parse threw", { error: err?.message || String(err) });
@@ -136,30 +217,27 @@ async function findAppointment(parsed) {
 }
 
 async function handleCreate(parsed, doctorName) {
-  if (!parsed.patientName || !parsed.date || !parsed.time || !parsed.type) {
+  parsed = applyCreateIntentDefaults(parsed);
+
+  const missing = missingCreateFields(parsed);
+  if (missing.length > 0) {
     return {
       ok: false,
       error: {
         code: "INCOMPLETE_CREATE_COMMAND",
-        message: "Please include a patient, date, time, and appointment type.",
+        message: `I could not understand: ${missing.join(", ")}. Please repeat your request and say ${missing.join(", ")} clearly, or type them explicitly (e.g. patient name, date, time).`,
       },
     };
   }
 
-  const patient = await findPatientByName(parsed.patientName);
-  if (!patient) {
-    return {
-      ok: false,
-      error: {
-        code: "PATIENT_NOT_FOUND",
-        message: `Patient ${parsed.patientName} not found. Please add them to MedFlow first.`,
-      },
-    };
+  if (!parsed.type) {
+    parsed.type = "consultation";
   }
 
   const sameDayAppointments = await Appointment.find({ date: parsed.date })
     .populate("patientId")
     .sort({ time: 1 });
+
   const conflict = checkConflict(
     sameDayAppointments,
     parsed.date,
@@ -179,11 +257,35 @@ async function handleCreate(parsed, doctorName) {
       ok: false,
       error: {
         code: "APPOINTMENT_CONFLICT",
-        message: `You already have ${conflictingPatient} at ${formatTime(conflict.conflictingAppointment.time)}. Would you like to schedule at ${formatTime(nextSlot)} instead?`,
+        message: `That time overlaps an existing visit (${conflictingPatient} at ${formatTime(conflict.conflictingAppointment.time)}). Only one appointment can run at a time — try ${formatTime(nextSlot)} or another slot.`,
         conflictingAppointment: conflict.conflictingAppointment,
         nextAvailableSlot: nextSlot,
       },
     };
+  }
+
+  let patient = await findPatientByName(parsed.patientName);
+  if (!patient) {
+    const upsert = await upsertPatient({
+      name: parsed.patientName.trim(),
+      dob: "",
+      contact: "",
+      insurance: "",
+    });
+    if (!upsert.ok) {
+      return { ok: false, error: upsert.error };
+    }
+    patient = await Patient.findById(upsert.data._id);
+    if (!patient) {
+      return {
+        ok: false,
+        error: {
+          code: "PATIENT_CREATE_FAILED",
+          message: "Could not create or load patient profile for this appointment.",
+        },
+      };
+    }
+    log("MongoDB", `Patient profile matched or created for appointment: ${parsed.patientName}`);
   }
 
   let appointment;
@@ -210,28 +312,17 @@ async function handleCreate(parsed, doctorName) {
     };
   }
 
-  const { eventId: calendarEventId, warning: createCalendarWarning } = await createCalendarEvent(appointment);
-  const warnings = [];
-
-  if (calendarEventId) {
-    appointment.googleCalendarEventId = calendarEventId;
-    await appointment.save();
-    log("GoogleCalendar", `Event synced. Calendar ID: ${calendarEventId}`);
-  } else {
-    log("GoogleCalendar", "Calendar sync failed after MongoDB save");
-  }
-  if (createCalendarWarning) warnings.push(createCalendarWarning);
+  let confirmationMessage =
+    parsed.confirmationMessage ||
+    `Got it. Scheduled ${patient.name} for a ${parsed.type} on ${formatDate(parsed.date)} at ${formatTime(parsed.time)}.`;
 
   return {
     ok: true,
     data: {
       appointment,
-      calendarEventId,
       mutatedSchedule: true,
-      confirmationMessage:
-        parsed.confirmationMessage ||
-        `Got it. Scheduled ${patient.name} for a ${parsed.type} on ${formatDate(parsed.date)} at ${formatTime(parsed.time)}.`,
-      warnings,
+      confirmationMessage,
+      warnings: [],
     },
   };
 }
@@ -244,6 +335,44 @@ async function handleUpdate(parsed) {
       error: {
         code: "APPOINTMENT_NOT_FOUND",
         message: "I could not find the appointment to update.",
+      },
+    };
+  }
+
+  const proposedDate = parsed.date ?? appointment.date;
+  const proposedTime = parsed.time ?? appointment.time;
+  const proposedDuration = parsed.duration ?? appointment.duration;
+
+  const sameDayForOverlap = await Appointment.find({ date: proposedDate })
+    .populate("patientId")
+    .sort({ time: 1 });
+
+  const othersSameDay = sameDayForOverlap.filter(
+    (a) => String(a._id) !== String(appointment._id),
+  );
+
+  const conflict = checkConflict(
+    othersSameDay,
+    proposedDate,
+    proposedTime,
+    proposedDuration,
+  );
+
+  if (conflict.hasConflict) {
+    const nextSlot = addMinutesToTime(
+      conflict.conflictingAppointment.time,
+      conflict.conflictingAppointment.duration || 30,
+    );
+    const conflictingPatient =
+      conflict.conflictingAppointment.patientId?.name || "another patient";
+
+    return {
+      ok: false,
+      error: {
+        code: "APPOINTMENT_CONFLICT",
+        message: `That time overlaps ${conflictingPatient} at ${formatTime(conflict.conflictingAppointment.time)}. Only one appointment can run at a time — try ${formatTime(nextSlot)} or another slot.`,
+        conflictingAppointment: conflict.conflictingAppointment,
+        nextAvailableSlot: nextSlot,
       },
     };
   }
@@ -268,26 +397,15 @@ async function handleUpdate(parsed) {
     };
   }
 
-  const { eventId: syncedEventId, warning: updateCalendarWarning } = await updateCalendarEvent(appointment);
-  const warnings = [];
-
-  if (syncedEventId) {
-    log("GoogleCalendar", `Event updated. Calendar ID: ${syncedEventId}`);
-  } else if (appointment.googleCalendarEventId) {
-    log("GoogleCalendar", "Calendar update failed after MongoDB update");
-  }
-  if (updateCalendarWarning) warnings.push(updateCalendarWarning);
-
   return {
     ok: true,
     data: {
       appointment,
-      calendarEventId: syncedEventId,
       mutatedSchedule: true,
       confirmationMessage:
         parsed.confirmationMessage ||
         `Updated ${appointment.patientId?.name || "the patient"} for ${formatDate(appointment.date)} at ${formatTime(appointment.time)}.`,
-      warnings,
+      warnings: [],
     },
   };
 }
@@ -304,7 +422,6 @@ async function handleDelete(parsed) {
     };
   }
 
-  const calendarEventId = appointment.googleCalendarEventId;
   const patientName = appointment.patientId?.name || parsed.patientName || "the patient";
 
   try {
@@ -321,10 +438,6 @@ async function handleDelete(parsed) {
     };
   }
 
-  const { warning: deleteCalendarWarning } = await deleteCalendarEvent(calendarEventId);
-  const warnings = [];
-  if (deleteCalendarWarning) warnings.push(deleteCalendarWarning);
-
   return {
     ok: true,
     data: {
@@ -333,7 +446,7 @@ async function handleDelete(parsed) {
       confirmationMessage:
         parsed.confirmationMessage ||
         `Deleted ${patientName}'s appointment from MedFlow.`,
-      warnings,
+      warnings: [],
     },
   };
 }
@@ -440,11 +553,8 @@ function handleChat(parsed) {
 }
 
 /**
- * Parses and executes a natural language calendar management command.
- *
  * @param {string} command Natural language scheduling command from a doctor.
- * @param {{ doctorName?: string, conversationHistory?: { role: string, content: string }[] }} options Execution context.
- * @returns {Promise<{ok: boolean, data?: object, error?: object}>}
+ * @param {{ doctorName?: string, conversationHistory?: { role: string, content: string }[], interactionMode?: "voice_calendar" | "chat_assistant" }} options Execution context.
  */
 export async function runCalendarAgent(command, options = {}) {
   if (!command?.trim()) {
@@ -480,12 +590,21 @@ export async function runCalendarAgent(command, options = {}) {
     };
   }
 
+  const interactionMode =
+    options.interactionMode === "voice_calendar" ? "voice_calendar" : "chat_assistant";
+
+  let notesSnapshot = "";
+  if (interactionMode === "chat_assistant") {
+    notesSnapshot = await buildNotesSnapshotForPrompt();
+  }
+
   const scheduleSnapshot = await buildScheduleSnapshotForPrompt();
 
   const parsedResult = await parseCommand(
     command,
     scheduleSnapshot,
     options.conversationHistory || [],
+    { interactionMode, notesSnapshot },
   );
   if (!parsedResult.ok) return parsedResult;
 

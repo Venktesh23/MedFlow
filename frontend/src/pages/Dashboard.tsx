@@ -20,7 +20,9 @@ import type {
   StatCardData,
 } from "@/dashboard/types";
 
-/** Short copy so the dashboard calendar fits without inner scroll. */
+/** Dashboard preview: show at most this many appointment cards so the calendar assistant keeps room. */
+const DASHBOARD_APPOINTMENT_PREVIEW = 2;
+
 const DASHBOARD_CALENDAR_WELCOME: AssistantMessage[] = [
   {
     id: "welcome",
@@ -194,24 +196,35 @@ export default function Dashboard() {
             <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-hidden xl:flex-row xl:items-stretch xl:gap-8">
               <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden xl:h-full xl:min-w-0">
                 <section className="flex shrink-0 flex-col">
-                  <div className="mb-2 flex items-center justify-between">
+                  <div className="mb-2 flex items-center justify-between gap-3">
                     <h2 className="text-[#161D19] text-[18px] font-semibold leading-7 tracking-[-0.2px] sm:text-[20px]">
                       Today&apos;s Appointments
                     </h2>
                     <Link
                       to="/appointments"
-                      className="text-[#065f46] text-sm leading-6 hover:underline sm:text-base"
+                      className="shrink-0 text-[#047857] text-sm font-medium leading-6 hover:underline sm:text-[15px]"
                     >
-                      View Schedule
+                      View all appointments
                     </Link>
                   </div>
                   <div className="flex flex-col gap-2">
-                    {appointments.map((appointment) => (
+                    {appointments.slice(0, DASHBOARD_APPOINTMENT_PREVIEW).map((appointment, index) => (
                       <AppointmentCard
-                        key={`${appointment.name}-${appointment.time}`}
+                        key={`${appointment.name}-${appointment.time}-${index}`}
                         {...appointment}
                       />
                     ))}
+                    {appointments.length > DASHBOARD_APPOINTMENT_PREVIEW && (
+                      <p className="text-center text-xs text-[#6B7280] pt-0.5 sm:text-sm">
+                        +{appointments.length - DASHBOARD_APPOINTMENT_PREVIEW} more —{" "}
+                        <Link
+                          to="/appointments"
+                          className="font-medium text-[#047857] hover:underline"
+                        >
+                          view all
+                        </Link>
+                      </p>
+                    )}
                     {!appointments.length && (
                       <StateMessage
                         title="No appointments today"
@@ -225,7 +238,7 @@ export default function Dashboard() {
                   <h2 className="shrink-0 text-[#161D19] text-[18px] font-semibold leading-7 tracking-[-0.2px] sm:text-[20px]">
                     Calendar Assistant
                   </h2>
-                  <div className="flex min-h-[260px] flex-1 flex-col min-h-0 overflow-hidden sm:min-h-[280px]">
+                  <div className="flex flex-1 flex-col overflow-hidden min-h-[300px] sm:min-h-[340px] lg:min-h-[360px]">
                     <CalendarAssistant
                       layout="fill"
                       variant="dashboard"

@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { Link } from "react-router-dom";
 import { IconMic } from "@/dashboard/DashboardIcons";
-import { buildCalendarScheduleCommand } from "@/dashboard/calendarCommand";
+import { CalendarAssistant } from "@/dashboard/CalendarAssistant";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { AppShell } from "@/components/layout/AppShell";
 import { StateMessage } from "@/components/StateMessage";
+import { useAuth } from "@/context/AuthContext";
 import {
   Dialog,
   DialogContent,
@@ -20,6 +21,17 @@ import {
   startOfWeekSunday,
   type WeekGridAppointment,
 } from "@/components/appointments/AppointmentWeekGrid";
+import type { AssistantMessage } from "@/dashboard/types";
+import { MEDFLOW_BOOKING_PHRASE, MEDFLOW_BOOKING_VISIT_TYPES } from "@/constants/medflowFormats";
+import { dedupeOverlappingAppointments } from "@/utils/appointmentOverlap";
+
+const APPOINTMENTS_CHAT_WELCOME: AssistantMessage[] = [
+  {
+    id: "welcome",
+    role: "assistant",
+    text: `Ask about your schedule, how to phrase bookings, or recent clinical note excerpts from MedFlow (full records stay under Notes or Patients).\n\nSame automation as voice:\n${MEDFLOW_BOOKING_PHRASE}\n\nVisit types: ${MEDFLOW_BOOKING_VISIT_TYPES}.`,
+  },
+];
 
 const FileIcon = () => (
   <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -31,10 +43,22 @@ const FileIcon = () => (
   </svg>
 );
 
-const PlusIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-    <path d="M4.16669 10H15.8334" stroke="white" strokeWidth="1.66667" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M10 4.16666V15.8333" stroke="white" strokeWidth="1.66667" strokeLinecap="round" strokeLinejoin="round"/>
+const ChatBubbleIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
+    <path
+      d="M17.5 9.58333C17.5029 10.6832 17.2459 11.7683 16.75 12.75C16.162 13.9265 15.2581 14.916 14.1395 15.6078C13.0209 16.2995 11.7319 16.6667 10.4167 16.6667C9.63452 16.6667 8.86751 16.5438 8.14167 16.3083L3.75 18.3333L5.36667 14.6417C4.57274 13.8377 3.99282 12.8469 3.68451 11.7617C3.37621 10.6765 3.34965 9.53209 3.60702 8.43451C3.86439 7.33693 4.39786 6.32114 5.15507 5.48347C5.91229 4.64581 6.87026 4.01154 7.94187 3.63952C9.01347 3.26751 10.1668 3.16942 11.2897 3.35493C12.4126 3.54044 13.4698 4.00353 14.3584 4.69941C15.2469 5.39529 15.9398 6.30266 16.3736 7.33704C16.8074 8.37142 16.9686 9.50156 16.8417 10.6167"
+      stroke="currentColor"
+      strokeWidth="1.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M12.9167 9.58333H12.925M10 9.58333H10.0083M7.08333 9.58333H7.09167"
+      stroke="currentColor"
+      strokeWidth="1.67"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
   </svg>
 );
 
@@ -75,6 +99,8 @@ type ScheduleAppointment = {
   /** Original HH:mm from API for layout calculations */
   timeRaw: string;
   durationMinutes: number;
+  /** Used to resolve overlaps consistently with server dedupe (keep oldest). */
+  createdAt?: string;
   initials: string;
   name: string;
   type: string;
@@ -111,26 +137,19 @@ function statusClass(status: ScheduleAppointment["status"]) {
 const SAMPLE_PATIENT_NAME = "MedFlow Sample Patient";
 
 export default function Appointments() {
+  const { user } = useAuth();
   const [appointments, setAppointments] = useState<ScheduleAppointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [scheduleView, setScheduleView] = useState<"week" | "list">("week");
   const [weekStart, setWeekStart] = useState(() => startOfWeekSunday(new Date()));
-  const [showCreate, setShowCreate] = useState(false);
-  const [createFlow, setCreateFlow] = useState<"pick" | "write">("pick");
-  const [speakDialogOpen, setSpeakDialogOpen] = useState(false);
+  const [voiceDialogOpen, setVoiceDialogOpen] = useState(false);
+  const [chatDialogOpen, setChatDialogOpen] = useState(false);
+  const [chatSessionKey, setChatSessionKey] = useState(0);
   const [speakSubmitting, setSpeakSubmitting] = useState(false);
   const [speakError, setSpeakError] = useState("");
+  const [removingAppointmentId, setRemovingAppointmentId] = useState<string | null>(null);
   const speech = useSpeechRecognition();
-  const [creating, setCreating] = useState(false);
-  const [createMessage, setCreateMessage] = useState("");
-  const [seeding, setSeeding] = useState(false);
-  const [newAppointment, setNewAppointment] = useState({
-    patientName: "",
-    date: new Date().toISOString().slice(0, 10),
-    time: "09:00",
-    type: "follow-up",
-  });
 
   async function loadAppointments() {
     setLoading(true);
@@ -144,23 +163,26 @@ export default function Appointments() {
       const appointmentsResponse = await api.get("/appointments");
       const appointmentData = responseData<{ appointments: any[] }>(appointmentsResponse);
       setAppointments(
-        (appointmentData.appointments || []).map((appointment) => {
-          const rawTime = String(appointment.time || "09:00");
-          const timeParts = splitTime(rawTime);
-          return {
-            id: appointment._id,
-            timeRaw: rawTime,
-            durationMinutes: Number(appointment.duration) > 0 ? Number(appointment.duration) : 30,
-            ...timeParts,
-            initials: initials(appointment.patientId?.name),
-            name: appointment.patientId?.name || "Unknown Patient",
-            type: appointment.type,
-            status: appointment.status,
-            avatarBg: "#cfe9dc",
-            avatarColor: "#065f46",
-            date: appointment.date,
-          };
-        }),
+        dedupeOverlappingAppointments(
+          (appointmentData.appointments || []).map((appointment) => {
+            const rawTime = String(appointment.time || "09:00");
+            const timeParts = splitTime(rawTime);
+            return {
+              id: appointment._id,
+              timeRaw: rawTime,
+              durationMinutes: Number(appointment.duration) > 0 ? Number(appointment.duration) : 30,
+              createdAt: appointment.createdAt ? String(appointment.createdAt) : undefined,
+              ...timeParts,
+              initials: initials(appointment.patientId?.name),
+              name: appointment.patientId?.name || "Unknown Patient",
+              type: appointment.type,
+              status: appointment.status,
+              avatarBg: "#cfe9dc",
+              avatarColor: "#065f46",
+              date: appointment.date,
+            };
+          }),
+        ),
       );
     } catch {
       setAppointments([]);
@@ -175,18 +197,23 @@ export default function Appointments() {
   }, []);
 
   useEffect(() => {
-    if (!speakDialogOpen) return;
+    if (!voiceDialogOpen) return;
     speech.reset();
     setSpeakError("");
-  }, [speakDialogOpen]);
+  }, [voiceDialogOpen]);
 
-  function handleSpeakDialogOpenChange(open: boolean) {
-    setSpeakDialogOpen(open);
+  function handleVoiceDialogOpenChange(open: boolean) {
+    setVoiceDialogOpen(open);
     if (!open) {
       speech.stop();
       speech.reset();
       setSpeakError("");
     }
+  }
+
+  function openChatDialog() {
+    setChatSessionKey((k) => k + 1);
+    setChatDialogOpen(true);
   }
 
   function toggleSpeakMic() {
@@ -199,17 +226,43 @@ export default function Appointments() {
     speech.start();
   }
 
+  async function removeAppointment(appointmentId: string) {
+    if (removingAppointmentId) return;
+    if (
+      !window.confirm(
+        "Remove this appointment from the schedule? Clinical notes are kept; any link to this visit is cleared on those notes.",
+      )
+    ) {
+      return;
+    }
+    setRemovingAppointmentId(appointmentId);
+    try {
+      await api.delete(`/appointments/${appointmentId}`);
+      setAppointments((prev) => prev.filter((a) => a.id !== appointmentId));
+    } catch (err) {
+      const msg = axios.isAxiosError(err)
+        ? (err.response?.data as { error?: { message?: string } })?.error?.message
+        : null;
+      window.alert(msg || "Could not remove appointment.");
+    } finally {
+      setRemovingAppointmentId(null);
+    }
+  }
+
   async function submitVoiceAppointment() {
     const command = speech.fullTranscript.trim();
     if (!command || speakSubmitting) return;
     setSpeakSubmitting(true);
     setSpeakError("");
     try {
-      await api.post("/calendar/command", { command });
+      await api.post("/calendar/command", {
+        command,
+        interactionMode: "voice_calendar",
+      });
       await loadAppointments();
-      handleSpeakDialogOpenChange(false);
+      handleVoiceDialogOpenChange(false);
     } catch (err) {
-      let msg = "Unable to create appointment from voice.";
+      let msg = "Unable to run that calendar command.";
       if (axios.isAxiosError(err)) {
         const apiMsg = (err.response?.data as { error?: { message?: string } })?.error?.message;
         if (apiMsg) msg = apiMsg;
@@ -217,25 +270,6 @@ export default function Appointments() {
       setSpeakError(msg);
     } finally {
       setSpeakSubmitting(false);
-    }
-  }
-
-  async function seedDemoData() {
-    setSeeding(true);
-    setError("");
-    try {
-      await api.post("/dev/seed-sample-data", {
-        patients: 8,
-        appointmentsPerPatient: 3,
-        notesPerAppointment: 1,
-      });
-      await loadAppointments();
-    } catch (e: any) {
-      setError(
-        e?.response?.data?.error?.message || "Unable to generate demo data. Check server logs.",
-      );
-    } finally {
-      setSeeding(false);
     }
   }
 
@@ -303,195 +337,42 @@ export default function Appointments() {
               Appointments
             </h1>
             <p className="text-[#6A7282] text-base leading-6 tracking-[-0.3px] mt-1">
-              Manage your upcoming patient visits and schedules. A{" "}
-              <span className="text-[#065f46] font-medium">sample visit</span> is added automatically so you can try
-              recording and note generation.
+              <span className="text-[#065f46] font-medium">Chat</span> handles scheduling and questions using your
+              appointments and recent notes in MedFlow.{" "}
+              <span className="text-[#065f46] font-medium">Manage calendar</span> (voice) runs the same scheduling
+              actions—book, move, cancel, or ask what&apos;s on your calendar only.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:gap-3 sm:items-stretch max-w-xl sm:max-w-none">
             <button
               type="button"
-              onClick={() => void seedDemoData()}
-              disabled={seeding}
-              className="inline-flex items-center gap-2 border border-[#E5E7EB] bg-white text-[#1A1A2E] font-medium text-base px-5 py-2.5 rounded-[10px] shadow-sm transition-colors whitespace-nowrap self-start sm:self-auto disabled:opacity-60 hover:bg-[#FAFAFA]"
+              onClick={openChatDialog}
+              className="flex flex-1 items-center justify-center gap-2 rounded-[10px] border-2 border-[#047857] bg-white text-[#047857] font-medium text-sm sm:text-base px-4 py-3 min-h-[48px] shadow-sm transition-colors hover:bg-[rgba(4,120,87,0.06)] basis-0 sm:min-w-0"
             >
-              {seeding ? "Generating…" : "Generate demo data"}
+              <ChatBubbleIcon />
+              Chat with calendar
             </button>
             <button
               type="button"
-              onClick={() => {
-                setShowCreate(true);
-                setCreateFlow("pick");
-                setCreateMessage("");
-              }}
-              className="inline-flex items-center gap-2 medflow-primary-button font-medium text-base px-5 py-2.5 rounded-[10px] shadow-sm transition-colors whitespace-nowrap self-start sm:self-auto"
+              onClick={() => handleVoiceDialogOpenChange(true)}
+              className="flex flex-1 items-center justify-center gap-2 rounded-[10px] medflow-primary-button font-medium text-sm sm:text-base px-4 py-3 min-h-[48px] shadow-sm transition-colors basis-0 sm:min-w-0"
             >
-              <PlusIcon />
-              New Appointment
+              <span className="flex h-5 w-5 items-center justify-center opacity-95" aria-hidden>
+                <IconMic />
+              </span>
+              Manage calendar
             </button>
           </div>
         </div>
 
-        {showCreate && (
-          <div className="bg-white rounded-xl border border-[#E5E7EB] shadow-sm p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-[#1A1A2E] text-lg font-semibold">New appointment</h2>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowCreate(false);
-                  setCreateFlow("pick");
-                  setCreateMessage("");
-                }}
-                className="px-3 py-1.5 rounded-lg border border-[#E5E7EB] text-sm hover:bg-[#FAFAFA]"
-              >
-                Close
-              </button>
-            </div>
-
-            {createFlow === "pick" && (
-              <div className="flex flex-col sm:flex-row gap-3">
-                <button
-                  type="button"
-                  onClick={() => setCreateFlow("write")}
-                  className="flex-1 rounded-xl border-2 border-[#047857] bg-[rgba(4,120,87,0.08)] px-5 py-4 text-left hover:bg-[rgba(4,120,87,0.14)] transition-colors"
-                >
-                  <span className="block text-[#1A1A2E] font-semibold">Type details</span>
-                  <span className="block text-sm text-[#6B7280] mt-1">
-                    Enter patient name, date, time, and visit type. The scheduling agent adds it to your calendar.
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSpeakDialogOpenChange(true)}
-                  className="flex-1 rounded-xl border-2 border-[#E5E7EB] bg-[#FAFAFA] px-5 py-4 text-left hover:border-[#047857] transition-colors"
-                >
-                  <span className="block text-[#1A1A2E] font-semibold">Speak naturally</span>
-                  <span className="block text-sm text-[#6B7280] mt-1">
-                    Use your voice. Say the patient&apos;s full name clearly, plus date, time, and visit type.
-                  </span>
-                </button>
-              </div>
-            )}
-
-            {createFlow === "write" && (
-              <>
-                <p className="text-sm text-[#6B7280] mb-3">
-                  The patient must already exist in MedFlow (same name as in Patients). The agent matches by name and
-                  syncs Google Calendar when configured.
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                  <label className="text-sm text-[#6B7280] md:col-span-2">
-                    Patient full name *
-                    <input
-                      type="text"
-                      value={newAppointment.patientName}
-                      onChange={(event) =>
-                        setNewAppointment((current) => ({
-                          ...current,
-                          patientName: event.target.value,
-                        }))
-                      }
-                      placeholder="e.g. Maria Lopez"
-                      className="mt-1 w-full rounded-lg border border-[#E5E7EB] px-3 py-2 text-[#1A1A2E]"
-                    />
-                  </label>
-                  <label className="text-sm text-[#6B7280]">
-                    Date *
-                    <input
-                      type="date"
-                      value={newAppointment.date}
-                      onChange={(event) =>
-                        setNewAppointment((current) => ({ ...current, date: event.target.value }))
-                      }
-                      className="mt-1 w-full rounded-lg border border-[#E5E7EB] px-3 py-2"
-                    />
-                  </label>
-                  <label className="text-sm text-[#6B7280]">
-                    Time *
-                    <input
-                      type="time"
-                      value={newAppointment.time}
-                      onChange={(event) =>
-                        setNewAppointment((current) => ({ ...current, time: event.target.value }))
-                      }
-                      className="mt-1 w-full rounded-lg border border-[#E5E7EB] px-3 py-2"
-                    />
-                  </label>
-                  <label className="text-sm text-[#6B7280] lg:col-span-2">
-                    Visit type *
-                    <select
-                      value={newAppointment.type}
-                      onChange={(event) =>
-                        setNewAppointment((current) => ({ ...current, type: event.target.value }))
-                      }
-                      className="mt-1 w-full rounded-lg border border-[#E5E7EB] px-3 py-2"
-                    >
-                      <option value="follow-up">follow-up</option>
-                      <option value="new-visit">new-visit</option>
-                      <option value="lab-review">lab-review</option>
-                      <option value="annual-physical">annual-physical</option>
-                      <option value="consultation">consultation</option>
-                    </select>
-                  </label>
-                </div>
-                <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    className="px-4 py-2 rounded-lg border border-[#E5E7EB] text-sm hover:bg-[#FAFAFA]"
-                    onClick={() => setCreateFlow("pick")}
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="button"
-                    disabled={creating}
-                    onClick={async () => {
-                      if (!newAppointment.patientName.trim()) {
-                        setCreateMessage("Enter the patient’s full name.");
-                        return;
-                      }
-                      setCreating(true);
-                      setCreateMessage("");
-                      try {
-                        const command = buildCalendarScheduleCommand({
-                          patientName: newAppointment.patientName,
-                          date: newAppointment.date,
-                          time: newAppointment.time,
-                          type: newAppointment.type,
-                        });
-                        await api.post("/calendar/command", { command });
-                        setCreateMessage("Appointment added via the scheduling agent.");
-                        setShowCreate(false);
-                        setCreateFlow("pick");
-                        await loadAppointments();
-                      } catch (err) {
-                        let msg = "Unable to add appointment.";
-                        if (axios.isAxiosError(err)) {
-                          const apiMsg = (err.response?.data as { error?: { message?: string } })?.error?.message;
-                          if (apiMsg) msg = apiMsg;
-                        }
-                        setCreateMessage(msg);
-                      } finally {
-                        setCreating(false);
-                      }
-                    }}
-                    className="medflow-primary-button px-4 py-2 rounded-lg font-medium disabled:opacity-60"
-                  >
-                    {creating ? "Adding…" : "Add to calendar"}
-                  </button>
-                  {createMessage && <p className="text-sm text-[#6B7280]">{createMessage}</p>}
-                </div>
-              </>
-            )}
-
-          </div>
-        )}
-
-        <Dialog open={speakDialogOpen} onOpenChange={handleSpeakDialogOpenChange}>
+        <Dialog open={voiceDialogOpen} onOpenChange={handleVoiceDialogOpenChange}>
           <DialogContent className="max-w-lg w-[calc(100vw-2rem)] gap-0 border-[#E5E7EB] bg-white p-0 overflow-hidden sm:rounded-xl">
             <DialogHeader className="px-6 pt-6 pb-3 text-left">
-              <DialogTitle className="text-[#1A1A2E] text-lg font-semibold">Schedule by voice</DialogTitle>
+              <DialogTitle className="text-[#1A1A2E] text-lg font-semibold">Manage calendar</DialogTitle>
+              <p className="text-sm text-[#6B7280] mt-1.5 leading-relaxed">
+                Voice is for scheduling only: book, reschedule, cancel, or ask what&apos;s on your calendar. For patient
+                notes or history, use Chat with calendar.
+              </p>
             </DialogHeader>
 
             <div className="flex flex-col items-center px-6 pb-4 border-t border-[#F3F4F6] bg-[#FAFAFA]">
@@ -516,8 +397,8 @@ export default function Appointments() {
               </p>
               {!speech.supported && (
                 <p className="mt-2 text-xs text-center text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 max-w-sm">
-                  Voice input isn&apos;t available in this browser. Use &quot;Type details&quot; instead, or try Chrome
-                  or Edge.
+                  Voice input isn&apos;t available in this browser. Use{" "}
+                  <span className="font-medium text-[#92400e]">Chat with calendar</span> instead, or try Chrome or Edge.
                 </p>
               )}
             </div>
@@ -525,37 +406,33 @@ export default function Appointments() {
             <DialogDescription asChild>
               <div className="px-6 pb-4 text-[#6B7280] text-sm leading-relaxed space-y-3 border-t border-[#F3F4F6] bg-white">
                 <p className="text-[#1A1A2E] font-medium text-[13px] pt-1">
-                  While speaking, include everything the agent needs:
+                  Speak naturally — add appointments, change times, cancel visits, or ask what&apos;s on your schedule:
                 </p>
                 <ul className="list-disc pl-5 space-y-1.5 text-[13px]">
                   <li>
-                    <span className="font-medium text-[#374151]">Patient full name</span> — must match a patient already
-                    in MedFlow (Patients tab).
+                    <span className="font-medium text-[#374151]">New visit</span> — patient name, date, time (visit type
+                    optional; defaults to consultation).
                   </li>
                   <li>
-                    <span className="font-medium text-[#374151]">Visit type</span> — say it in plain words, for example
-                    follow-up, new patient visit, lab review, annual physical, or consultation.
+                    <span className="font-medium text-[#374151]">Reschedule</span> — e.g. &ldquo;Move Maria&apos;s
+                    appointment tomorrow to 3 PM.&rdquo;
                   </li>
                   <li>
-                    <span className="font-medium text-[#374151]">Date</span> — e.g. &quot;tomorrow&quot;, &quot;March
-                    15&quot;, &quot;next Tuesday&quot;.
+                    <span className="font-medium text-[#374151]">Cancel</span> — e.g. &ldquo;Cancel John Doe on
+                    Tuesday.&rdquo;
                   </li>
                   <li>
-                    <span className="font-medium text-[#374151]">Time</span> — e.g. &quot;2 PM&quot;, &quot;9:30 AM&quot;.
-                  </li>
-                  <li>
-                    <span className="font-medium text-[#374151]">Optional:</span> duration, e.g. &quot;for 30
-                    minutes&quot;.
+                    <span className="font-medium text-[#374151]">Ask</span> — e.g. &ldquo;What do I have tomorrow?&rdquo;
                   </li>
                 </ul>
                 <div className="pt-3 border-t border-[#E5E7EB]">
-                  <p className="text-[13px] font-medium text-[#374151] mb-1.5">Try saying something like:</p>
+                  <p className="text-[13px] font-medium text-[#374151] mb-1.5">Examples:</p>
                   <p className="text-sm text-[#1A1A2E] leading-relaxed rounded-lg bg-[rgba(4,120,87,0.06)] border border-[rgba(4,120,87,0.15)] px-3 py-2.5">
-                    &ldquo;Schedule Maria Lopez for a follow-up tomorrow at two PM.&rdquo;
+                    &ldquo;Schedule Maria Lopez for tomorrow at two PM.&rdquo; · &ldquo;Cancel Maria Lopez&apos;s appointment
+                    tomorrow.&rdquo;
                   </p>
                   <p className="text-xs text-[#6B7280] mt-2">
-                    Swap in your patient&apos;s name, the visit type, and the date and time you want — you don&apos;t need
-                    special wording or brackets.
+                    Changes apply to your MedFlow schedule.
                   </p>
                 </div>
               </div>
@@ -572,7 +449,10 @@ export default function Appointments() {
                 )
               )}
               {speakError && (
-                <p className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                <p
+                  role="alert"
+                  className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2"
+                >
                   {speakError}
                 </p>
               )}
@@ -581,7 +461,7 @@ export default function Appointments() {
             <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 px-6 py-4 border-t border-[#E5E7EB] bg-white">
               <button
                 type="button"
-                onClick={() => handleSpeakDialogOpenChange(false)}
+                onClick={() => handleVoiceDialogOpenChange(false)}
                 className="px-4 py-2.5 rounded-lg border border-[#E5E7EB] text-sm font-medium text-[#374151] hover:bg-[#FAFAFA]"
               >
                 Cancel
@@ -594,8 +474,30 @@ export default function Appointments() {
                 onClick={() => void submitVoiceAppointment()}
                 className="medflow-primary-button px-5 py-2.5 rounded-lg text-sm font-medium disabled:opacity-60"
               >
-                {speakSubmitting ? "Creating…" : "Create appointment"}
+                {speakSubmitting ? "Sending…" : "Send to calendar"}
               </button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={chatDialogOpen} onOpenChange={setChatDialogOpen}>
+          <DialogContent className="max-w-xl w-[calc(100vw-2rem)] gap-0 border-[#E5E7EB] bg-white p-0 overflow-hidden sm:rounded-xl flex flex-col max-h-[min(640px,90vh)]">
+            <DialogHeader className="px-6 pt-6 pb-3 text-left shrink-0 border-b border-[#F3F4F6]">
+              <DialogTitle className="text-[#1A1A2E] text-lg font-semibold">Chat with calendar</DialogTitle>
+              <p className="text-sm text-[#6B7280] mt-1 leading-relaxed">
+                Type scheduling commands or ask about visits and recent note excerpts in MedFlow. Adds and changes use the
+                same automation as voice.
+              </p>
+            </DialogHeader>
+            <div className="h-[min(480px,58vh)] min-h-[340px] flex flex-col px-2 pb-3 pt-1">
+              <CalendarAssistant
+                key={chatSessionKey}
+                messages={APPOINTMENTS_CHAT_WELCOME}
+                interactionMode="chat_assistant"
+                onSuccess={() => void loadAppointments()}
+                layout="fill"
+                variant="default"
+              />
             </div>
           </DialogContent>
         </Dialog>
@@ -681,6 +583,8 @@ export default function Appointments() {
                 onPrevWeek={() => setWeekStart((d) => addDays(d, -7))}
                 onNextWeek={() => setWeekStart((d) => addDays(d, 7))}
                 onThisWeek={() => setWeekStart(startOfWeekSunday(new Date()))}
+                clinicHoursStart={user?.clinicHoursStart}
+                clinicHoursEnd={user?.clinicHoursEnd}
               />
             </div>
           )}
@@ -741,7 +645,7 @@ export default function Appointments() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1 sm:gap-2 ml-20 sm:ml-0">
+                    <div className="flex items-center gap-1 sm:gap-2 ml-20 sm:ml-0 flex-wrap">
                       {appointment.status !== "in-progress" && (
                         <span
                           className={`px-3 py-1 rounded-full border text-xs font-medium ${statusClass(appointment.status)}`}
@@ -755,6 +659,14 @@ export default function Appointments() {
                       >
                         Record visit
                       </Link>
+                      <button
+                        type="button"
+                        disabled={removingAppointmentId === appointment.id}
+                        onClick={() => void removeAppointment(appointment.id)}
+                        className="px-4 py-2 rounded-[10px] border border-[#E5E7EB] bg-white text-sm font-medium text-[#991B1B] hover:bg-red-50 disabled:opacity-60"
+                      >
+                        {removingAppointmentId === appointment.id ? "Removing…" : "Remove"}
+                      </button>
                     </div>
                   </div>
                 ))}

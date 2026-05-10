@@ -27,7 +27,6 @@ const appointmentSchema = new mongoose.Schema(
       enum: ["upcoming", "in-progress", "completed"],
       default: "upcoming",
     },
-    googleCalendarEventId: { type: String, default: "", trim: true },
   },
   { timestamps: { createdAt: "createdAt", updatedAt: "updatedAt" } },
 );

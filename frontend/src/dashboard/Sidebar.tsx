@@ -1,3 +1,4 @@
+import { ChevronLeft } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import type { NavItem } from "./types";
@@ -30,12 +31,30 @@ export function Sidebar({ isOpen, onClose, navItems, logoUrl }: SidebarProps) {
         `}
       aria-hidden={!isOpen}
     >
-        <Link
-          to="/"
-          className="h-[92px] flex-shrink-0 overflow-hidden flex items-center justify-center px-5 transition-opacity duration-200"
-        >
-          <img src={logoUrl} alt="MedFlow" className="w-[156px] h-auto object-contain" />
-        </Link>
+        <div className="grid h-[92px] flex-shrink-0 grid-cols-[1fr_auto_1fr] items-center px-3">
+          <div className="flex min-w-0 justify-end">
+            {isOpen && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex h-10 w-10 shrink-0 translate-x-2 items-center justify-center rounded-lg text-white transition-colors duration-200 hover:bg-white/10 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                aria-label="Close navigation menu"
+                aria-expanded={true}
+                aria-controls="medflow-sidebar"
+              >
+                <ChevronLeft className="h-6 w-6" strokeWidth={2} aria-hidden />
+              </button>
+            )}
+          </div>
+          <Link
+            to="/"
+            onClick={onClose}
+            className="flex min-h-0 shrink-0 items-center justify-center overflow-hidden px-1 py-2 transition-opacity duration-200"
+          >
+            <img src={logoUrl} alt="MedFlow" className="h-auto w-[156px] object-contain" />
+          </Link>
+          <div className="min-w-0 shrink-0" aria-hidden />
+        </div>
 
         <nav className="flex flex-col gap-1 px-2 mt-0 flex-1 overflow-y-auto">
           {navItems.map(({ icon: Icon, label, path }) => {

@@ -1,6 +1,7 @@
 import { Patient } from "../models/Patient.js";
 import { Appointment } from "../models/Appointment.js";
 import { Note } from "../models/Note.js";
+import { checkConflict } from "../agents/utils/conflictDetection.js";
 import { sendError, sendSuccess } from "../utils/http.js";
 
 const SAMPLE_PATIENTS = [
@@ -221,6 +222,12 @@ export async function seedSampleData(req, res) {
           type: appointmentType,
         });
         if (!appointment) {
+          const sameDay = await Appointment.find({ date });
+          const duration = 30;
+          const conflict = checkConflict(sameDay, date, time, duration);
+          if (conflict.hasConflict) {
+            continue;
+          }
           appointment = await Appointment.create({
             patientId: patient._id,
             doctorName: req.user?.name || "Doctor",

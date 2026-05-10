@@ -189,3 +189,16 @@ export async function updateNote(req, res) {
 
   return sendSuccess(res, { note: existing });
 }
+
+export async function deleteNote(req, res) {
+  const note = await Note.findByIdAndDelete(req.params.id);
+
+  if (!note) {
+    return sendError(res, 404, {
+      code: "NOTE_NOT_FOUND",
+      message: "Note not found.",
+    });
+  }
+
+  return sendSuccess(res, { deleted: true, noteId: String(note._id) });
+}

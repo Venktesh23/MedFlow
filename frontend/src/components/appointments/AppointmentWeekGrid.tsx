@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 
 export type WeekGridAppointment = {
@@ -17,21 +18,42 @@ export type WeekGridAppointment = {
 
 /** Vertical pixels per hour — larger = more space between hour lines and taller event blocks. */
 const PX_PER_HOUR = 96;
-const START_HOUR = 6;
-const END_HOUR = 22;
-const TOTAL_MINUTES = (END_HOUR - START_HOUR) * 60;
-const GRID_HEIGHT_PX = (END_HOUR - START_HOUR) * PX_PER_HOUR;
 /** Ensures short visits still show full patient name + visit type with wrapping. */
 const MIN_EVENT_HEIGHT_PX = 96;
 /** Minimum width for the whole week strip so each day column can fit long names. */
 const WEEK_GRID_MIN_WIDTH_PX = 1240;
 
-function parseTimeToMinutes(t: string): number {
-  const parts = t.trim().split(":");
-  const hour = Number(parts[0]);
-  const minute = Number(parts[1] ?? 0);
-  if (Number.isNaN(hour) || Number.isNaN(minute)) return START_HOUR * 60;
-  return hour * 60 + minute;
+const DEFAULT_GRID_START = 6;
+const DEFAULT_GRID_END_INCLUSIVE = 21;
+
+/**
+ * `clinicHoursEnd` is inclusive (last hour row, e.g. 17 = 5 PM block).
+ * Grid uses exclusive end hour for layout (next hour after last visible slot).
+ */
+export function normalizeGridHours(
+  clinicHoursStart?: number,
+  clinicHoursEndInclusive?: number,
+): { startHour: number; endExclusive: number } {
+  let s =
+    typeof clinicHoursStart === "number" && Number.isFinite(clinicHoursStart)
+      ? Math.round(clinicHoursStart)
+      : DEFAULT_GRID_START;
+  let eInc =
+    typeof clinicHoursEndInclusive === "number" && Number.isFinite(clinicHoursEndInclusive)
+      ? Math.round(clinicHoursEndInclusive)
+      : DEFAULT_GRID_END_INCLUSIVE;
+  s = Math.min(23, Math.max(0, s));
+  eInc = Math.min(23, Math.max(0, eInc));
+  if (eInc < s) {
+    const swap = s;
+    s = eInc;
+    eInc = swap;
+  }
+  const endExclusive = Math.min(24, eInc + 1);
+  if (endExclusive <= s) {
+    return { startHour: DEFAULT_GRID_START, endExclusive: 22 };
+  }
+  return { startHour: s, endExclusive };
 }
 
 export function startOfWeekSunday(d: Date): Date {
@@ -89,6 +111,9 @@ type AppointmentWeekGridProps = {
   onPrevWeek: () => void;
   onNextWeek: () => void;
   onThisWeek: () => void;
+  /** Inclusive hours (0–23); from Settings → Clinic. Defaults: 6–21 (same visible span as before). */
+  clinicHoursStart?: number;
+  clinicHoursEnd?: number;
 };
 
 export function AppointmentWeekGrid({
@@ -97,8 +122,30 @@ export function AppointmentWeekGrid({
   onPrevWeek,
   onNextWeek,
   onThisWeek,
+  clinicHoursStart,
+  clinicHoursEnd,
 }: AppointmentWeekGridProps) {
-  const hours = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
+  const { startHour, endExclusive, totalMinutes, gridHeightPx, hours } = useMemo(() => {
+    const { startHour: sh, endExclusive: ee } = normalizeGridHours(clinicHoursStart, clinicHoursEnd);
+    const span = ee - sh;
+    return {
+      startHour: sh,
+      endExclusive: ee,
+      totalMinutes: span * 60,
+      gridHeightPx: span * PX_PER_HOUR,
+      hours: Array.from({ length: span }, (_, i) => sh + i),
+    };
+  }, [clinicHoursStart, clinicHoursEnd]);
+
+  function parseTimeToMinutes(t: string): number {
+    const parts = t.trim().split(":");
+    const hour = Number(parts[0]);
+    const minute = Number(parts[1] ?? 0);
+    if (Number.isNaN(hour) || Number.isNaN(minute)) return startHour * 60;
+    return hour * 60 + minute;
+  }
+
+  const lastShownHour = endExclusive - 1;
 
   const dayMetas = Array.from({ length: 7 }, (_, i) => {
     const d = addDays(weekStart, i);
@@ -184,7 +231,7 @@ export function AppointmentWeekGrid({
                 const dayAppts = appointments.filter((a) => a.date === dm.ymd);
 
                 return (
-                  <div key={dm.ymd} className="relative bg-white" style={{ minHeight: GRID_HEIGHT_PX }}>
+                  <div key={dm.ymd} className="relative bg-white" style={{ minHeight: gridHeightPx }}>
                     {/* hour lines */}
                     <div className="pointer-events-none absolute inset-0 flex flex-col">
                       {hours.map((h) => (
@@ -196,28 +243,31 @@ export function AppointmentWeekGrid({
                     {dayAppts.map((a) => {
                       const startMin = parseTimeToMinutes(a.timeRaw);
                       const dur = Math.max(15, a.durationMinutes || 30);
-                      let topMin = startMin - START_HOUR * 60;
+                      let topMin = startMin - startHour * 60;
                       let visDur = dur;
-                      if (topMin + dur > TOTAL_MINUTES) {
-                        visDur = Math.max(15, TOTAL_MINUTES - Math.max(0, topMin));
+                      if (topMin + dur > totalMinutes) {
+                        visDur = Math.max(15, totalMinutes - Math.max(0, topMin));
                       }
-                      if (topMin >= TOTAL_MINUTES) return null;
+                      if (topMin >= totalMinutes) return null;
                       if (topMin < 0) {
                         visDur = Math.max(15, visDur + topMin);
                         topMin = 0;
                       }
                       if (visDur <= 0) return null;
 
-                      const topPx = (topMin / TOTAL_MINUTES) * GRID_HEIGHT_PX;
-                      const durationHeightPx = (visDur / TOTAL_MINUTES) * GRID_HEIGHT_PX;
+                      const topPx = (topMin / totalMinutes) * gridHeightPx;
+                      const durationHeightPx = (visDur / totalMinutes) * gridHeightPx;
                       const heightPx = Math.max(MIN_EVENT_HEIGHT_PX, durationHeightPx);
 
                       return (
                         <Link
                           key={a.id}
                           to={`/session/${a.id}`}
-                          className={`absolute left-1 right-1 z-10 flex flex-col rounded-lg border px-2.5 py-2 text-left shadow-sm transition-opacity hover:opacity-95 ${statusBorder(a.status)}`}
-                          style={{ top: topPx, height: heightPx }}
+                          className={`absolute left-1 right-1 z-10 flex flex-col rounded-lg border px-2 py-2 text-left shadow-sm transition-opacity hover:opacity-95 box-border ${statusBorder(a.status)}`}
+                          style={{
+                            top: topPx,
+                            height: heightPx,
+                          }}
                           title={`${a.name} · ${formatVisitLabel(a.type)}`}
                         >
                           <p
@@ -252,8 +302,8 @@ export function AppointmentWeekGrid({
         </div>
       </div>
       <p className="px-1 text-xs text-[#6B7280]">
-        Week starts Sunday (same as Google Calendar US). Scroll vertically for earlier and later hours ({START_HOUR}:00–
-        {END_HOUR}:00).
+        Week starts Sunday. Hours match your clinic settings ({formatHourLabel(startHour)}–
+        {formatHourLabel(lastShownHour)}).
       </p>
     </div>
   );

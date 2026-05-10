@@ -19,6 +19,8 @@ function publicUser(user) {
     name: user.name,
     email: user.email,
     clinicName: user.clinicName,
+    clinicHoursStart: user.clinicHoursStart,
+    clinicHoursEnd: user.clinicHoursEnd,
     specialty: user.specialty,
   };
 }

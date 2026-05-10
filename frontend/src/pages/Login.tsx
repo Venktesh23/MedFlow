@@ -1,10 +1,32 @@
 // Authentication page for doctor sign-in and registration flows.
+import axios from "axios";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
+
+type LoginLocationState = { from?: string };
+
+/** Only allow in-app relative paths (avoid open redirects). */
+function safeReturnPath(raw: unknown): string {
+  if (typeof raw !== "string") return "/";
+  const t = raw.trim();
+  if (!t.startsWith("/") || t.startsWith("//")) return "/";
+  if (t.startsWith("/login")) return "/";
+  return t;
+}
+
+function authErrorMessage(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    const msg = (err.response?.data as { error?: { message?: string } })?.error?.message;
+    if (msg?.trim()) return msg.trim();
+    if (!err.response) return "Network error. Check your connection and try again.";
+  }
+  return "Unable to authenticate. Check your details and try again.";
+}
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login, register } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [error, setError] = useState("");
@@ -32,9 +54,10 @@ export default function Login() {
       } else {
         await register(form);
       }
-      navigate("/");
-    } catch {
-      setError("Unable to authenticate. Check your details and try again.");
+      const state = location.state as LoginLocationState | null;
+      navigate(safeReturnPath(state?.from), { replace: true });
+    } catch (err) {
+      setError(authErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -121,7 +144,10 @@ export default function Login() {
 
         <button
           type="button"
-          onClick={() => setMode(mode === "login" ? "register" : "login")}
+          onClick={() => {
+            setMode(mode === "login" ? "register" : "login");
+            setError("");
+          }}
           className="w-full mt-4 text-[#065f46] text-sm font-medium hover:underline"
         >
           {mode === "login" ? "Need an account? Register" : "Already have an account? Sign in"}

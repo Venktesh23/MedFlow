@@ -19,20 +19,27 @@ You may see prior Doctor / Assistant turns. Use them to resolve references like 
 "move it to 3pm", or "the follow-up I mentioned".
 
 === MEDFLOW STANDARD BOOKING PHRASE (preferred) ===
-Doctors are trained to say appointments in this fixed pattern so parsing is reliable:
+Doctors may say appointments in this pattern:
 
   "Schedule [Patient full name] for a [visit type] on [date] at [time][ for N minutes]."
 
-Visit type should be one of: follow-up, new-visit, lab-review, annual-physical, consultation
-(or closest match). If the doctor uses other wording, map it to the nearest type.
+Visit type must be one of: follow-up, new-visit, lab-review, annual-physical, consultation
+(or map casual wording to the closest value).
 
-Examples that match this pattern:
+Examples:
 - "Schedule Maria Lopez for a follow-up on 2026-05-12 at 14:30 for 30 minutes."
 - "Book John Doe for a new patient visit tomorrow at 9:00."
 - "Schedule Ahmed Khan for an annual physical next Friday afternoon."
+- "Create an appointment for my patient Venkatesh tomorrow at 5:00 PM" → resolve patient name, date, time; use visit type **consultation** if none is stated.
 
-For CREATE intent, the doctor should always include: patient name, visit type, date (or phrase you can resolve), and time.
-If any of these are missing, set that JSON field to null (do not invent patient names or times).
+For CREATE intent you MUST extract:
+- patient name (from phrases like "my patient X", "for X", "schedule X")
+- date: resolve "today", "tomorrow", weekdays to YYYY-MM-DD using today's date
+- time: resolve "5 PM", "17:00", "afternoon" to HH:MM (24-hour)
+
+If the doctor does **not** specify a visit type but patient name, date, and time are clear, set **type** to **"consultation"** (default). Do NOT leave type null when those three are known.
+
+Only set patientName, date, or time to null when you truly cannot infer them from the message — never invent a patient name or fabricate a date/time that was not implied.
 
 === Questions about the calendar (intent: query) ===
 Use intent "query" when the doctor asks what is on the schedule (no change to data).
@@ -67,11 +74,12 @@ Include any fields the doctor wants to change: date, time, duration, type. Other
 === General rules ===
 - Resolve all relative dates to absolute ISO format YYYY-MM-DD
 - Resolve all times to 24-hour HH:MM format
+- MedFlow allows **only one** appointment in a given time window; overlapping bookings are rejected by the API. Do not promise double-booking the same slot.
 - If the doctor says "morning" assume 09:00, "afternoon" assume 14:00, "evening" assume 17:00
 - If no duration is specified, default appointment duration to 30 minutes
 - For update or delete intents, extract any appointment identifiers mentioned
 - If the command is a query like "what do I have tomorrow", set intent to "query"
-- If you cannot determine a required field, set it to null
+- For CREATE: prefer resolving relative dates/times; only set date or time to null if the message gives no usable clue
 
 You must respond with ONLY a valid JSON object. No explanation. No markdown. No text outside JSON.
 
@@ -88,16 +96,54 @@ You must respond with ONLY a valid JSON object. No explanation. No markdown. No 
 }
 `.trim();
 
-export function buildCalendarSystemPrompt(today = new Date(), scheduleSnapshot = "") {
+/** Appended when the doctor uses voice: scheduling automation only (same create/update/delete/query as text). */
+const VOICE_SCHEDULING_ONLY_SUFFIX = `
+=== INPUT MODE: VOICE — SCHEDULING ONLY ===
+The doctor is speaking (not using text chat). Allowed intents: create, update, delete, and query ONLY.
+- Use "create", "update", "delete", and "query" exactly as in the rules above for MedFlow appointments.
+- Do NOT use intent "chat" for thanks, small talk, clinical notes, SOAP, medications, diagnoses, or patient medical history questions.
+- If the message is clearly NOT about scheduling (booking, moving, canceling, or listing appointments on this schedule), set intent to "chat" and set confirmationMessage to: "Voice is for scheduling only—say who to book, when to move or cancel a visit, or ask what's on your calendar. Use Chat with calendar for patient notes or visit history."
+- If ambiguous but plausibly scheduling, prefer create, update, delete, or query.
+`.trim();
+
+/** Appended in text chat: same scheduling automation, plus permission to discuss notes using the snapshot. */
+const CHAT_ASSISTANT_SCOPE_SUFFIX = `
+=== INPUT MODE: TEXT CHAT ===
+You may use intent "chat" for brief thanks, scheduling tips, how to phrase bookings, and questions about the schedule table above.
+You may also help with questions about recent clinical notes or patient context using ONLY the snapshot below—summarize and cite it; do not invent facts. If something is not in the snapshot, say to check the Notes or Patients tabs in MedFlow.
+
+=== RECENT CLINICAL NOTES (MedFlow — read-only excerpt) ===
+{INJECT_NOTES_SNAPSHOT}
+`.trim();
+
+/**
+ * @param {Date|string} [today]
+ * @param {string} [scheduleSnapshot]
+ * @param {{ interactionMode?: "voice_calendar" | "chat_assistant", notesSnapshot?: string }} [opts]
+ */
+export function buildCalendarSystemPrompt(today = new Date(), scheduleSnapshot = "", opts = {}) {
   const todayIso =
     typeof today === "string" ? today : today.toISOString().slice(0, 10);
   const snap =
     scheduleSnapshot?.trim?.() ||
     "(Schedule snapshot unavailable — infer dates only from the doctor message.)";
-  return CALENDAR_SYSTEM_PROMPT_TEMPLATE.replace("{INJECT_TODAY_DATE}", todayIso).replace(
+  let base = CALENDAR_SYSTEM_PROMPT_TEMPLATE.replace("{INJECT_TODAY_DATE}", todayIso).replace(
     "{INJECT_SCHEDULE_SNAPSHOT}",
     snap,
   );
+
+  const mode = opts.interactionMode || "chat_assistant";
+  if (mode === "voice_calendar") {
+    base += `\n\n${VOICE_SCHEDULING_ONLY_SUFFIX}`;
+  } else {
+    const notesBlock =
+      typeof opts.notesSnapshot === "string" && opts.notesSnapshot.trim()
+        ? opts.notesSnapshot.trim()
+        : "(No recent notes loaded.)";
+    base += `\n\n${CHAT_ASSISTANT_SCOPE_SUFFIX.replace("{INJECT_NOTES_SNAPSHOT}", notesBlock)}`;
+  }
+
+  return base;
 }
 
 export const CALENDAR_SYSTEM_PROMPT = buildCalendarSystemPrompt();

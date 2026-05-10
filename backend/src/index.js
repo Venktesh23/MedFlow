@@ -13,6 +13,7 @@ import agentRoutes from "./routes/agent.js";
 import devRoutes from "./routes/dev.js";
 import { requireAuth } from "./middleware/auth.js";
 import { connectMongo } from "./services/mongoService.js";
+import { dedupeOverlappingAppointments } from "./services/appointmentOverlapCleanup.js";
 import { sendError, sendSuccess } from "./utils/http.js";
 
 // Express entry point for the MedFlow backend API.
@@ -135,9 +136,19 @@ function scheduleMongoReconnect() {
 }
 
 connectMongo()
-  .then(() => {
+  .then(async () => {
     mongoConnected = true;
     console.log("[MedFlow][Mongo] Connected successfully.");
+    try {
+      const { deletedCount } = await dedupeOverlappingAppointments();
+      if (deletedCount > 0) {
+        console.log(
+          `[MedFlow][Appointments] Removed ${deletedCount} overlapping duplicate appointment record(s).`,
+        );
+      }
+    } catch (error) {
+      console.error("[MedFlow][Appointments] Overlap cleanup failed.", error?.message || error);
+    }
   })
   .catch((error) => {
     mongoConnected = false;

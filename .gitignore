@@ -7,12 +7,18 @@ backend/node_modules/
 frontend/dist/
 **/dist/
 
-# Environment
+# Environment — never commit secrets; tracked templates stay allowed
 .env
+.env.*
+!.env.example
+!**/.env.example
+!.env.sample
+!**/.env.sample
 .env.local
 .env.*.local
-backend/.env
-frontend/.env
+
+# Google Cloud key file (use GOOGLE_APPLICATION_CREDENTIALS or similar; never commit)
+**/google-service-account.json
 
 # Logs & OS
 npm-debug.log*

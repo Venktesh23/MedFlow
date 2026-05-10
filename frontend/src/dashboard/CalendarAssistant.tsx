@@ -21,9 +21,16 @@ type CalendarAssistantProps = {
    * Other pages keep scrollable message history.
    */
   variant?: "default" | "dashboard";
+  /**
+   * `chat_assistant` (default): scheduling + optional notes context.
+   * `voice_calendar`: same scheduling actions when using voice from API; use Appointments voice dialog for that.
+   */
+  interactionMode?: "voice_calendar" | "chat_assistant";
 };
 
-const DEFAULT_WELCOME = `I manage your live MedFlow calendar: schedule, reschedule, or cancel visits using MongoDB and Google Calendar when connected — and I answer questions about who's booked when using your actual appointment list.
+const DEFAULT_WELCOME = `I manage your MedFlow appointment calendar: schedule, reschedule, or cancel visits — and I answer questions about who's booked when using your actual appointment list.
+
+In this chat you can also ask about recent clinical notes when they appear in MedFlow (summaries only—open Notes or Patients for full records).
 
 Say things like "What's tomorrow?", "Cancel Maria Tuesday", or:
 
@@ -43,6 +50,7 @@ export function CalendarAssistant({
   onSuccess,
   layout = "default",
   variant = "default",
+  interactionMode = "chat_assistant",
 }: CalendarAssistantProps) {
   const [msg, setMsg] = useState("");
   const [history, setHistory] = useState<AssistantMessage[]>(messages);
@@ -73,6 +81,7 @@ export function CalendarAssistant({
       const response = await api.post("/calendar/command", {
         command: trimmed,
         history: historyForApi,
+        interactionMode,
       });
       const data = responseData<{
         confirmationMessage?: string;
@@ -196,22 +205,29 @@ export function CalendarAssistant({
         >
           <IconMic />
         </button>
-        <input
-          type="text"
-          value={speech.isListening ? speech.fullTranscript : msg}
-          onChange={(e) => setMsg(e.target.value)}
-          placeholder={inputPlaceholder}
-          className="flex-1 h-[34px] min-w-0 bg-white border border-[rgba(187,202,191,0.60)] rounded-md px-[10px] text-[13px] text-[#161D19] placeholder:text-[rgba(22,29,25,0.50)] outline-none focus:border-[#047857] transition-colors"
-        />
-        <button
-          type="button"
-          onClick={() => sendCommand(speech.isListening ? speech.fullTranscript : msg)}
-          disabled={loading}
-          className="w-8 h-8 rounded-full bg-[#047857] flex items-center justify-center flex-shrink-0 hover:bg-[#065f46] transition-colors disabled:opacity-60"
-          aria-label="Send"
+        <form
+          className="flex flex-1 items-center gap-2 min-w-0"
+          onSubmit={(e) => {
+            e.preventDefault();
+            sendCommand(speech.isListening ? speech.fullTranscript : msg);
+          }}
         >
-          <IconSend />
-        </button>
+          <input
+            type="text"
+            value={speech.isListening ? speech.fullTranscript : msg}
+            onChange={(e) => setMsg(e.target.value)}
+            placeholder={inputPlaceholder}
+            className="flex-1 h-[34px] min-w-0 bg-white border border-[rgba(187,202,191,0.60)] rounded-md px-[10px] text-[13px] text-[#161D19] placeholder:text-[rgba(22,29,25,0.50)] outline-none focus:border-[#047857] transition-colors"
+          />
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-8 h-8 rounded-full bg-[#047857] flex items-center justify-center flex-shrink-0 hover:bg-[#065f46] transition-colors disabled:opacity-60"
+            aria-label="Send"
+          >
+            <IconSend />
+          </button>
+        </form>
       </div>
     </div>
   );

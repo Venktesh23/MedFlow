@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import axios from "axios";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ClinicalNotePanel } from "@/components/ClinicalNotePanel";
 import { StateMessage } from "@/components/StateMessage";
 import { AppShell } from "@/components/layout/AppShell";
@@ -16,6 +17,7 @@ function formatDate(date?: string) {
 
 export default function PatientProfile() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const editMode = searchParams.get("edit") === "1";
 
@@ -31,6 +33,7 @@ export default function PatientProfile() {
   });
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   async function loadProfile(options?: { silent?: boolean }) {
     const silent = Boolean(options?.silent);
@@ -102,6 +105,51 @@ export default function PatientProfile() {
         contact: patient.contact || "",
         insurance: patient.insurance || "",
       });
+    }
+  }
+
+  async function handleDeletePatient() {
+    if (!id || !patient || deleting) return;
+    if (
+      !window.confirm(
+        "Remove this patient from MedFlow? If they have clinical notes or appointments, you will be asked to confirm a full delete.",
+      )
+    ) {
+      return;
+    }
+    setDeleting(true);
+    setSaveMessage("");
+    try {
+      await api.delete(`/patients/${id}`);
+      navigate("/patients");
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.status === 409) {
+        const msg =
+          (err.response?.data as { error?: { message?: string } })?.error?.message ||
+          "This patient has related records.";
+        if (
+          window.confirm(
+            `${msg}\n\nPermanently delete this patient and ALL related notes and appointments? This cannot be undone.`,
+          )
+        ) {
+          try {
+            await api.delete(`/patients/${id}`, { params: { force: true } });
+            navigate("/patients");
+          } catch (err2) {
+            const msg2 = axios.isAxiosError(err2)
+              ? (err2.response?.data as { error?: { message?: string } })?.error?.message
+              : null;
+            setSaveMessage(msg2 || "Could not delete patient. Try again.");
+          }
+        }
+      } else {
+        const msg = axios.isAxiosError(err)
+          ? (err.response?.data as { error?: { message?: string } })?.error?.message
+          : null;
+        setSaveMessage(msg || "Could not delete patient. Try again.");
+      }
+    } finally {
+      setDeleting(false);
     }
   }
   const appointments = profile?.appointments || [];
@@ -226,6 +274,19 @@ export default function PatientProfile() {
                   >
                     Edit details
                   </button>
+                  <div className="mt-6 pt-4 border-t border-[#F3F4F6]">
+                    <p className="text-xs font-medium text-[#6B7280] uppercase tracking-wide mb-2">
+                      Danger zone
+                    </p>
+                    <button
+                      type="button"
+                      disabled={deleting}
+                      onClick={() => void handleDeletePatient()}
+                      className="text-sm font-medium text-red-700 hover:text-red-800 disabled:opacity-50"
+                    >
+                      {deleting ? "Deleting…" : "Delete patient"}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

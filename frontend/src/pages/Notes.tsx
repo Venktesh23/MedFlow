@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import axios from "axios";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ClinicalNotePanel, type ClinicalNote } from "@/components/ClinicalNotePanel";
 import { StateMessage } from "@/components/StateMessage";
@@ -67,6 +68,25 @@ function IconPencil({ className }: { className?: string }) {
   );
 }
 
+function IconTrash({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M10 11v6M14 11v6" />
+    </svg>
+  );
+}
+
 export default function Notes() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -78,6 +98,7 @@ export default function Notes() {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editDrafts, setEditDrafts] = useState<Record<string, ClinicalNote>>({});
   const [savingNoteId, setSavingNoteId] = useState<string | null>(null);
+  const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
 
   const [visibleCount, setVisibleCount] = useState(6);
   const PAGE_SIZE = 6;
@@ -234,6 +255,37 @@ export default function Notes() {
     });
   }
 
+  async function deleteNote(noteId: string, event: MouseEvent) {
+    event.stopPropagation();
+    if (deletingNoteId) return;
+    if (
+      !window.confirm(
+        "Permanently delete this clinical note from MedFlow? This cannot be undone.",
+      )
+    ) {
+      return;
+    }
+    setDeletingNoteId(noteId);
+    try {
+      await api.delete(`/session/notes/${noteId}`);
+      setNotes((prev) => prev.filter((n) => n._id !== noteId));
+      setExpanded((current) => (current === noteId ? null : current));
+      setEditingNoteId((current) => (current === noteId ? null : current));
+      setEditDrafts((d) => {
+        const next = { ...d };
+        delete next[noteId];
+        return next;
+      });
+    } catch (err) {
+      const msg = axios.isAxiosError(err)
+        ? (err.response?.data as { error?: { message?: string } })?.error?.message
+        : null;
+      window.alert(msg || "Could not delete note. Try again.");
+    } finally {
+      setDeletingNoteId(null);
+    }
+  }
+
   async function seedDemoData() {
     setSeeding(true);
     setSeedMessage("");
@@ -286,7 +338,7 @@ export default function Notes() {
         </div>
 
         {seedMessage && (
-          <StateMessage tone="success" title="Demo Data" message={seedMessage} />
+          <StateMessage tone="neutral" title="Demo Data" message={seedMessage} />
         )}
 
         <div className="bg-white border border-[#E5E7EB] rounded-xl shadow-sm p-4 flex flex-col gap-3">
@@ -333,7 +385,7 @@ export default function Notes() {
           <>
             {!visibleNotes.length && (
               <StateMessage
-                tone="info"
+                tone="neutral"
                 title="No notes found"
                 message="Generated clinical notes will appear here after completed sessions."
               />
@@ -381,20 +433,32 @@ export default function Notes() {
                             {formatNoteDateTime(note.createdAt)}
                           </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={(event) => openEdit(note, event)}
-                          className={`shrink-0 p-2 rounded-lg transition-colors ${
-                            isEditing
-                              ? "bg-[rgba(4,120,87,0.12)] text-[#047857]"
-                              : "text-[#6B7280] hover:text-[#047857] hover:bg-[rgba(4,120,87,0.08)]"
-                          }`}
-                          aria-label={isEditing ? "Done editing" : "Edit clinical note"}
-                          aria-pressed={isEditing}
-                          title={isEditing ? "Exit edit mode" : "Edit note"}
-                        >
-                          <IconPencil />
-                        </button>
+                        <div className="flex shrink-0 items-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={(event) => openEdit(note, event)}
+                            className={`p-2 rounded-lg transition-colors ${
+                              isEditing
+                                ? "bg-[rgba(4,120,87,0.12)] text-[#047857]"
+                                : "text-[#6B7280] hover:text-[#047857] hover:bg-[rgba(4,120,87,0.08)]"
+                            }`}
+                            aria-label={isEditing ? "Done editing" : "Edit clinical note"}
+                            aria-pressed={isEditing}
+                            title={isEditing ? "Exit edit mode" : "Edit note"}
+                          >
+                            <IconPencil />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={deletingNoteId === note._id}
+                            onClick={(event) => void deleteNote(note._id, event)}
+                            className="p-2 rounded-lg text-[#6B7280] hover:text-red-700 hover:bg-red-50 disabled:opacity-50"
+                            aria-label="Delete clinical note"
+                            title="Delete note"
+                          >
+                            <IconTrash />
+                          </button>
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-2 pointer-events-none">

@@ -212,12 +212,15 @@ export async function generateSOAPNote(transcript, patientContext = "") {
 
 /**
  * @param {string} command
- * @param {{ scheduleSnapshot?: string, conversationHistory?: { role: string, content: string }[] }} [options]
+ * @param {{ scheduleSnapshot?: string, conversationHistory?: { role: string, content: string }[], interactionMode?: "voice_calendar" | "chat_assistant", notesSnapshot?: string }} [options]
  * @returns {Promise<object|null>}
  */
 export async function parseCalendarCommand(command, options = {}) {
   const scheduleSnapshot = options.scheduleSnapshot || "";
-  const system = buildCalendarSystemPrompt(new Date(), scheduleSnapshot);
+  const system = buildCalendarSystemPrompt(new Date(), scheduleSnapshot, {
+    interactionMode: options.interactionMode || "chat_assistant",
+    notesSnapshot: options.notesSnapshot,
+  });
 
   let userContent = String(command || "").trim();
   const hist = options.conversationHistory;

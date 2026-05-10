@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  deleteNote,
   listNotes,
   listNotesByPatient,
   submitTranscript,
@@ -31,6 +32,7 @@ router.put(
   validateNoteUpdate,
   asyncHandler(updateNote),
 );
+router.delete("/notes/:id", validateIdParam("id"), asyncHandler(deleteNote));
 
 router.get("/notes", asyncHandler(listNotes));
 router.get("/notes/:patientId", validatePatientId, asyncHandler(listNotesByPatient));

@@ -99,3 +99,43 @@ export async function updatePatient(req, res) {
 
   return sendSuccess(res, { patient });
 }
+
+/**
+ * Deletes a patient. Default: 409 if any notes or appointments exist.
+ * With ?force=true (or body.force), deletes all related notes and appointments first.
+ */
+export async function deletePatient(req, res) {
+  const patient = await Patient.findById(req.params.id);
+
+  if (!patient) {
+    return sendError(res, 404, {
+      code: "PATIENT_NOT_FOUND",
+      message: "Patient not found.",
+    });
+  }
+
+  const force =
+    String(req.query.force || "").toLowerCase() === "true" || req.body?.force === true;
+
+  const [noteCount, apptCount] = await Promise.all([
+    Note.countDocuments({ patientId: patient._id }),
+    Appointment.countDocuments({ patientId: patient._id }),
+  ]);
+
+  if ((noteCount > 0 || apptCount > 0) && !force) {
+    return sendError(res, 409, {
+      code: "PATIENT_HAS_RELATED_RECORDS",
+      message: `This patient has ${noteCount} clinical note(s) and ${apptCount} appointment(s). Repeat the request with ?force=true to delete the patient and all related records permanently.`,
+      details: { noteCount, apptCount },
+    });
+  }
+
+  if (force) {
+    await Note.deleteMany({ patientId: patient._id });
+    await Appointment.deleteMany({ patientId: patient._id });
+  }
+
+  await Patient.findByIdAndDelete(patient._id);
+
+  return sendSuccess(res, { deleted: true, patientId: String(patient._id) });
+}

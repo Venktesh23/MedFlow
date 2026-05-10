@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
-    "test:agents:e2e": "node scripts/e2e-agents-text-only.mjs"
+    "test:agents:e2e": "node scripts/e2e-agents-text-only.mjs",
+    "cleanup:overlaps": "node scripts/remove-overlapping-appointments.mjs"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"
@@ -18,7 +19,6 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "googleapis": "^171.4.0",
     "jsonwebtoken": "^9.0.3",
     "mongodb": "^7.2.0",
     "mongoose": "^9.6.1",

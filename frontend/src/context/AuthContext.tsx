@@ -6,6 +6,8 @@ type AuthUser = {
   name: string;
   email: string;
   clinicName?: string;
+  clinicHoursStart?: number;
+  clinicHoursEnd?: number;
   specialty?: string;
 };
 
@@ -23,6 +25,8 @@ type AuthContextValue = {
   updateProfile: (payload: {
     name?: string;
     clinicName?: string;
+    clinicHoursStart?: number;
+    clinicHoursEnd?: number;
     specialty?: string;
   }) => Promise<void>;
   logout: () => void;

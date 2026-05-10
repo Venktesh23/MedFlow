@@ -13,9 +13,13 @@ function normalizeConversationHistory(raw) {
 }
 
 export async function handleCalendarCommand(req, res) {
+  const interactionMode =
+    req.body.interactionMode === "voice_calendar" ? "voice_calendar" : "chat_assistant";
+
   const result = await runCalendarAgent(req.body.command, {
     doctorName: req.user?.name || "Doctor",
     conversationHistory: normalizeConversationHistory(req.body.history),
+    interactionMode,
   });
 
   if (!result.ok) {
