@@ -1,6 +1,8 @@
+import { AgentRun } from "../models/AgentRun.js";
 import { Patient } from "../models/Patient.js";
 import { Appointment } from "../models/Appointment.js";
 import { Note } from "../models/Note.js";
+import { User } from "../models/User.js";
 import { checkConflict } from "../agents/utils/conflictDetection.js";
 import { sendError, sendSuccess } from "../utils/http.js";
 
@@ -300,6 +302,48 @@ export async function seedSampleData(req, res) {
     return sendError(res, 500, {
       code: "SEED_SAMPLE_DATA_FAILED",
       message: "Failed to seed demo data.",
+      details: err?.message,
+    });
+  }
+}
+
+const PURGE_CONFIRM_PHRASE = "DELETE_ALL_APP_DATA";
+
+/**
+ * Removes all patients, appointments, notes, and agent runs.
+ * Users (login accounts) are not modified.
+ */
+export async function purgeApplicationData(req, res) {
+  if (req.body?.confirm !== PURGE_CONFIRM_PHRASE) {
+    return sendError(res, 400, {
+      code: "CONFIRMATION_REQUIRED",
+      message: `Send JSON body { "confirm": "${PURGE_CONFIRM_PHRASE}" } to wipe clinical and scheduling data. User accounts are preserved.`,
+    });
+  }
+
+  try {
+    const [runs, notes, appts, patients] = await Promise.all([
+      AgentRun.deleteMany({}),
+      Note.deleteMany({}),
+      Appointment.deleteMany({}),
+      Patient.deleteMany({}),
+    ]);
+
+    const userCount = await User.countDocuments({});
+
+    return sendSuccess(res, {
+      deleted: {
+        agentRuns: runs.deletedCount ?? 0,
+        notes: notes.deletedCount ?? 0,
+        appointments: appts.deletedCount ?? 0,
+        patients: patients.deletedCount ?? 0,
+      },
+      usersPreserved: userCount,
+    });
+  } catch (err) {
+    return sendError(res, 500, {
+      code: "PURGE_FAILED",
+      message: "Failed to purge application data.",
       details: err?.message,
     });
   }

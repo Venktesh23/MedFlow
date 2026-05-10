@@ -155,11 +155,6 @@ export default function Appointments() {
     setLoading(true);
     setError("");
     try {
-      try {
-        await api.post("/appointments/sample");
-      } catch {
-        /* Demo appointment is optional if the request fails */
-      }
       const appointmentsResponse = await api.get("/appointments");
       const appointmentData = responseData<{ appointments: any[] }>(appointmentsResponse);
       setAppointments(

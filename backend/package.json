@@ -7,7 +7,8 @@
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
     "test:agents:e2e": "node scripts/e2e-agents-text-only.mjs",
-    "cleanup:overlaps": "node scripts/remove-overlapping-appointments.mjs"
+    "cleanup:overlaps": "node scripts/remove-overlapping-appointments.mjs",
+    "purge:app-data": "node scripts/purge-all-app-data.mjs DELETE_ALL_APP_DATA"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"
