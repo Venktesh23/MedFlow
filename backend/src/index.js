@@ -51,7 +51,10 @@ app.use(
     origin(origin, callback) {
       if (!origin) return callback(null, true);
       const normalized = normalizeOrigin(origin);
-      const isAllowed = allowedOrigins.includes(normalized);
+      const isAllowed =
+        allowedOrigins.includes(normalized) ||
+        /^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(normalized) ||
+        /^https:\/\/[a-z0-9-]+\.onrender\.com$/.test(normalized);
       return callback(isAllowed ? null : new Error("CORS_ORIGIN_NOT_ALLOWED"), isAllowed);
     },
     credentials: true,
