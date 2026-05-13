@@ -42,9 +42,11 @@ async function ensureClinicalRecords({
   patient,
   appointment,
   appointment_id,
+  userId = null,
 }) {
   const patientResult = await upsertPatient(
     normalizePatientPayload({ patient_id, patient }),
+    userId,
   );
 
   if (!patientResult.ok) return patientResult;
@@ -76,6 +78,10 @@ function soapNotePayload(generatedNote) {
   };
 }
 
+function transcriptWordCount(transcript = "") {
+  return String(transcript).trim().split(/\s+/).filter(Boolean).length;
+}
+
 async function generateAndPersist({
   transcript,
   patient_id,
@@ -83,9 +89,31 @@ async function generateAndPersist({
   patient,
   appointment,
   input_type,
+  userId = null,
   source_metadata = {},
 }) {
   const rawTranscript = normalizeTranscriptWhitespace(transcript);
+
+  if (transcriptWordCount(rawTranscript) < 20) {
+    const error = {
+      code: "TRANSCRIPT_TOO_SHORT",
+      message: "Transcript is too short to generate clinical documentation.",
+      details: "Provide a longer, speaker-labeled transcript.",
+    };
+
+    await saveAgentRun({
+      patient_id,
+      appointment_id,
+      input_type,
+      transcript: rawTranscript,
+      output: null,
+      status: "failed",
+      error,
+    });
+
+    return { ok: false, error };
+  }
+
   let cleanedTranscript = rawTranscript;
   try {
     const cleaned = await cleanVisitTranscript(rawTranscript);
@@ -99,6 +127,7 @@ async function generateAndPersist({
     appointment_id,
     patient,
     appointment,
+    userId,
   });
 
   if (!recordsResult.ok) {
@@ -149,6 +178,7 @@ async function generateAndPersist({
   const saveResult = await saveClinicalNote({
     patient_id,
     appointment_id,
+    userId,
     transcript: cleanedTranscript,
     rawTranscript:
       cleanedTranscript !== rawTranscript ? rawTranscript : null,
@@ -234,6 +264,7 @@ export async function processTranscriptSession({
   appointment_id = null,
   patient = {},
   appointment = {},
+  userId = null,
 }) {
   return generateAndPersist({
     transcript,
@@ -242,6 +273,7 @@ export async function processTranscriptSession({
     patient,
     appointment,
     input_type: "transcript",
+    userId,
   });
 }
 
@@ -264,6 +296,7 @@ export async function processAudioSession({
   appointment_id = null,
   patient = {},
   appointment = {},
+  userId = null,
 }) {
   const transcriptionResult = await runTranscriptionAgent(audioBuffer, {
     mimetype,
@@ -289,6 +322,7 @@ export async function processAudioSession({
     patient,
     appointment,
     input_type: "audio",
+    userId,
     source_metadata: {
       audio_mimetype: mimetype,
     },

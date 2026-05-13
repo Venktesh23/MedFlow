@@ -17,16 +17,16 @@ type AppointmentType =
 const TYPE_LABELS: Record<AppointmentType, string> = {
   consultation: "Initial Consult",
   "follow-up": "Follow-up",
-  "new-visit": "Urgent Care",
+  "new-visit": "New Visit",
   "annual-physical": "Routine Exam",
-  "lab-review": "Post-Op",
+  "lab-review": "Lab Review",
 };
 
 const TYPE_PILLS: Array<{ id: "all" | AppointmentType; label: string }> = [
   { id: "all", label: "All Types" },
   { id: "consultation", label: "Initial Consult" },
   { id: "follow-up", label: "Follow-up" },
-  { id: "lab-review", label: "Post-Op" },
+  { id: "lab-review", label: "Lab Review" },
 ];
 
 function formatNoteDateTime(createdAt: string | Date | undefined) {
@@ -98,6 +98,7 @@ export default function Notes() {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editDrafts, setEditDrafts] = useState<Record<string, ClinicalNote>>({});
   const [savingNoteId, setSavingNoteId] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
 
   const [visibleCount, setVisibleCount] = useState(6);
@@ -105,9 +106,6 @@ export default function Notes() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
-  const [seeding, setSeeding] = useState(false);
-  const [seedMessage, setSeedMessage] = useState("");
 
   async function loadNotes() {
     setLoading(true);
@@ -225,6 +223,7 @@ export default function Notes() {
     const draft = editDrafts[noteId];
     if (!draft) return;
     setSavingNoteId(noteId);
+    setSaveError(null);
     try {
       const response = await api.put(`/session/notes/${noteId}`, { soapNote: draft });
       const data = responseData<{ note: any }>(response);
@@ -238,8 +237,11 @@ export default function Notes() {
         delete next[noteId];
         return next;
       });
-    } catch {
-      // keep draft; user can retry
+    } catch (err) {
+      const msg = axios.isAxiosError(err)
+        ? (err.response?.data as { error?: { message?: string } })?.error?.message
+        : null;
+      setSaveError(msg || "Could not save note. Try again.");
     } finally {
       setSavingNoteId(null);
     }
@@ -286,27 +288,6 @@ export default function Notes() {
     }
   }
 
-  async function seedDemoData() {
-    setSeeding(true);
-    setSeedMessage("");
-    try {
-      // Creates real Patients + Appointments + Notes in Mongo so the UI is in sync.
-      await api.post("/dev/seed-sample-data", {
-        patients: 8,
-        appointmentsPerPatient: 3,
-        notesPerAppointment: 1,
-      });
-      await loadNotes();
-      setSeedMessage("Demo data generated. Notes are now in sync with the database.");
-    } catch (e: any) {
-      setSeedMessage(
-        e?.response?.data?.error?.message || "Unable to generate demo data. Check server logs.",
-      );
-    } finally {
-      setSeeding(false);
-    }
-  }
-
   return (
     <AppShell>
       <div className="px-6 pt-1 pb-12 md:px-8 md:pt-2 md:pb-14 flex flex-col gap-6 medflow-page-bg min-h-full">
@@ -321,14 +302,6 @@ export default function Notes() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => void seedDemoData()}
-              disabled={seeding}
-              className="px-4 py-2 rounded-lg border border-[#E5E7EB] text-[#1A1A2E] font-medium hover:bg-[#FAFAFA] transition-colors disabled:opacity-60"
-            >
-              {seeding ? "Generating…" : "Generate demo data"}
-            </button>
-            <button
-              type="button"
               onClick={() => navigate("/appointments")}
               className="medflow-primary-button px-4 py-2 rounded-lg font-medium"
             >
@@ -337,17 +310,13 @@ export default function Notes() {
           </div>
         </div>
 
-        {seedMessage && (
-          <StateMessage tone="neutral" title="Demo Data" message={seedMessage} />
-        )}
-
         <div className="bg-white border border-[#E5E7EB] rounded-xl shadow-sm p-4 flex flex-col gap-3">
           <div className="flex flex-col md:flex-row md:items-center gap-3">
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search notes by patient, ID, or keywords…"
-              className="flex-1 rounded-lg border border-[#E5E7EB] px-4 py-2 outline-none focus:border-[#047857]"
+              className="flex-1 rounded-lg border border-[#E5E7EB] px-4 py-2 outline-none focus:border-[#1E2A38]"
             />
             <div className="flex flex-wrap gap-2">
               {TYPE_PILLS.map((pill) => (
@@ -357,7 +326,7 @@ export default function Notes() {
                   onClick={() => setSelectedType(pill.id)}
                   className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
                     selectedType === pill.id
-                      ? "border-[#047857] text-[#047857] bg-[rgba(4, 120, 87,0.10)]"
+                      ? "border-[#1E2A38] text-[#1E2A38] bg-[rgba(30, 42, 56,0.10)]"
                       : "border-[#E5E7EB] text-[#6B7280] bg-white hover:bg-[#FAFAFA]"
                   }`}
                 >
@@ -420,9 +389,9 @@ export default function Notes() {
                           toggleCardExpand(note._id);
                         }
                       }}
-                      className={`bg-white border border-[#E5E7EB] rounded-xl shadow-sm p-5 flex flex-col gap-3 text-left outline-none transition-[box-shadow,border-color] focus-visible:ring-2 focus-visible:ring-[#047857]/40 ${
-                        isExpanded ? "ring-1 ring-[#047857]/15 shadow-md" : ""
-                      } cursor-pointer hover:border-[#047857]/35`}
+                      className={`bg-white border border-[#E5E7EB] rounded-xl shadow-sm p-5 flex flex-col gap-3 text-left outline-none transition-[box-shadow,border-color] focus-visible:ring-2 focus-visible:ring-[#1E2A38]/40 ${
+                        isExpanded ? "ring-1 ring-[#1E2A38]/15 shadow-md" : ""
+                      } cursor-pointer hover:border-[#1E2A38]/35`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -439,8 +408,8 @@ export default function Notes() {
                             onClick={(event) => openEdit(note, event)}
                             className={`p-2 rounded-lg transition-colors ${
                               isEditing
-                                ? "bg-[rgba(4,120,87,0.12)] text-[#047857]"
-                                : "text-[#6B7280] hover:text-[#047857] hover:bg-[rgba(4,120,87,0.08)]"
+                                ? "bg-[rgba(30,42,56,0.12)] text-[#1E2A38]"
+                                : "text-[#6B7280] hover:text-[#1E2A38] hover:bg-[rgba(30,42,56,0.08)]"
                             }`}
                             aria-label={isEditing ? "Done editing" : "Edit clinical note"}
                             aria-pressed={isEditing}
@@ -462,7 +431,7 @@ export default function Notes() {
                       </div>
 
                       <div className="flex items-center gap-2 pointer-events-none">
-                        <span className="text-xs font-semibold text-[#065f46] inline-flex items-center gap-2">
+                        <span className="text-xs font-semibold text-[#1E2A38] inline-flex items-center gap-2">
                           <IconBot />
                           AI Summary
                         </span>
@@ -478,7 +447,7 @@ export default function Notes() {
                         {(note.tags?.length ? note.tags : ["Visit"]).map((tag: string) => (
                           <span
                             key={tag}
-                            className="px-2 py-1 rounded bg-[rgba(4, 120, 87,0.10)] text-[#065f46] text-xs"
+                            className="px-2 py-1 rounded bg-[rgba(30, 42, 56,0.10)] text-[#1E2A38] text-xs"
                           >
                             #{String(tag).replace(/^#/, "")}
                           </span>
@@ -492,25 +461,32 @@ export default function Notes() {
                           onKeyDown={(event) => event.stopPropagation()}
                         >
                           {isEditing && (
-                            <div className="flex flex-wrap gap-2 justify-end">
-                              <button
-                                type="button"
-                                onClick={(event) => cancelEdit(note._id, event)}
-                                className="px-4 py-2 rounded-lg border border-[#E5E7EB] text-[#1A1A2E] font-medium text-sm hover:bg-[#FAFAFA]"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                type="button"
-                                disabled={savingNoteId === note._id}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void saveNoteEdits(note._id);
-                                }}
-                                className="medflow-primary-button px-4 py-2 rounded-lg font-medium text-sm disabled:opacity-60"
-                              >
-                                {savingNoteId === note._id ? "Saving…" : "Save changes"}
-                              </button>
+                            <div className="flex flex-col gap-2">
+                              {saveError && editingNoteId === note._id && (
+                                <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                                  {saveError}
+                                </p>
+                              )}
+                              <div className="flex flex-wrap gap-2 justify-end">
+                                <button
+                                  type="button"
+                                  onClick={(event) => cancelEdit(note._id, event)}
+                                  className="px-4 py-2 rounded-lg border border-[#E5E7EB] text-[#1A1A2E] font-medium text-sm hover:bg-[#FAFAFA]"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={savingNoteId === note._id}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void saveNoteEdits(note._id);
+                                  }}
+                                  className="medflow-primary-button px-4 py-2 rounded-lg font-medium text-sm disabled:opacity-60"
+                                >
+                                  {savingNoteId === note._id ? "Saving…" : "Save changes"}
+                                </button>
+                              </div>
                             </div>
                           )}
                           {note.rawTranscript ? (

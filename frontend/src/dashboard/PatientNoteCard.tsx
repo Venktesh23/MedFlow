@@ -27,7 +27,7 @@ export function PatientNoteCard({
     highlighted ? "bg-[rgba(238,246,238,0.30)]" : "",
     hasDivider ? "border-t border-[rgba(187,202,191,0.20)]" : "",
     noteId
-      ? "cursor-pointer hover:bg-[rgba(4,120,87,0.06)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857]/35"
+      ? "cursor-pointer hover:bg-[rgba(30,42,56,0.06)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E2A38]/35"
       : "",
   ]
     .filter(Boolean)
@@ -36,7 +36,7 @@ export function PatientNoteCard({
   const inner = (
     <>
       <div className="flex items-start justify-between mb-1">
-        <span className="text-[#065f46] text-[12px] font-bold leading-4 tracking-[0.6px] uppercase">
+        <span className="text-[#1E2A38] text-[12px] font-bold leading-4 tracking-[0.6px] uppercase">
           AI SUMMARY GENERATED
         </span>
         <span className="text-[#3C4A42] text-[11px] leading-[16.5px] ml-3 flex-shrink-0">

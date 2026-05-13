@@ -77,8 +77,8 @@ export default function Dashboard() {
       setAppointments(
         (summary.appointments || []).map((appointment) => ({
           initials: initials(appointment.patientId?.name),
-          avatarBg: "bg-[rgba(4, 120, 87,0.10)]",
-          initialsColor: "text-[#065f46]",
+          avatarBg: "bg-[rgba(30, 42, 56,0.10)]",
+          initialsColor: "text-[#1E2A38]",
           name: appointment.patientId?.name || "Unknown Patient",
           time: formatTime(appointment.time),
           visit: appointment.type,
@@ -135,19 +135,19 @@ export default function Dashboard() {
   const stats: StatCardData[] = useMemo(
     () => [
       {
-        iconBg: "bg-[rgba(4, 120, 87,0.12)]",
+        iconBg: "bg-[rgba(30, 42, 56,0.12)]",
         icon: <IconStatPatients />,
         label: "TOTAL PATIENTS TODAY",
-        value: new Set(appointments.map((appointment) => appointment.name)).size,
+        value: appointments.length,
       },
       {
-        iconBg: "bg-[rgba(4, 120, 87,0.20)]",
+        iconBg: "bg-[rgba(30, 42, 56,0.20)]",
         icon: <IconStatCompleted />,
         label: "COMPLETED VISITS",
         value: appointments.filter((appointment) => appointment.status === "completed").length,
       },
       {
-        iconBg: "bg-[rgba(4, 120, 87,0.10)]",
+        iconBg: "bg-[rgba(30, 42, 56,0.10)]",
         icon: <IconStatPending />,
         label: "PENDING NOTES",
         value: appointments.filter((appointment) => appointment.status !== "completed").length,
@@ -202,7 +202,7 @@ export default function Dashboard() {
                     </h2>
                     <Link
                       to="/appointments"
-                      className="shrink-0 text-[#047857] text-sm font-medium leading-6 hover:underline sm:text-[15px]"
+                      className="shrink-0 text-[#1E2A38] text-sm font-medium leading-6 hover:underline sm:text-[15px]"
                     >
                       View all appointments
                     </Link>
@@ -219,7 +219,7 @@ export default function Dashboard() {
                         +{appointments.length - DASHBOARD_APPOINTMENT_PREVIEW} more —{" "}
                         <Link
                           to="/appointments"
-                          className="font-medium text-[#047857] hover:underline"
+                          className="font-medium text-[#1E2A38] hover:underline"
                         >
                           view all
                         </Link>
@@ -264,7 +264,7 @@ export default function Dashboard() {
                       onChange={(event) =>
                         setNoteSortOrder(event.target.value as NoteSortOrder)
                       }
-                      className="max-w-[200px] rounded-lg border border-[#E5E7EB] bg-white px-3 py-1.5 text-[13px] font-medium text-[#161D19] outline-none focus:border-[#047857] focus:ring-1 focus:ring-[#047857]/25"
+                      className="max-w-[200px] rounded-lg border border-[#E5E7EB] bg-white px-3 py-1.5 text-[13px] font-medium text-[#161D19] outline-none focus:border-[#1E2A38] focus:ring-1 focus:ring-[#1E2A38]/25"
                       aria-label="Sort notes by date"
                     >
                       <option value="new-old">Newest → oldest</option>

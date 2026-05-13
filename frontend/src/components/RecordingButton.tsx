@@ -20,12 +20,12 @@ export function RecordingButton({
       disabled={disabled}
       className={`relative h-36 w-36 rounded-full text-white font-bold shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#9CA3AF] ${
         isRecording
-          ? "bg-[#047857] medflow-recording-pulse"
-          : "bg-[#9CA3AF] hover:bg-[#047857]"
+          ? "bg-[#1E2A38] medflow-recording-pulse"
+          : "bg-[#9CA3AF] hover:bg-[#1E2A38]"
       }`}
     >
       {isRecording && (
-        <span className="absolute inset-0 rounded-full border-8 border-[#047857]/20 medflow-recording-ring" />
+        <span className="absolute inset-0 rounded-full border-8 border-[#1E2A38]/20 medflow-recording-ring" />
       )}
       <span className="relative text-center text-sm leading-tight px-3">
         {isRecording ? recordingLabel : idleLabel}

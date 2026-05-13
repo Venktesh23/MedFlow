@@ -59,7 +59,7 @@ export function AppShell({ children }: AppShellProps) {
         <button
           type="button"
           onClick={() => setSidebarOpen(true)}
-          className="fixed left-3 top-2 z-[60] flex h-10 w-10 items-center justify-center rounded-lg text-[#4B5563] transition-colors duration-200 hover:text-[#374151] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857]/35"
+          className="fixed left-3 top-2 z-[60] flex h-10 w-10 items-center justify-center rounded-lg text-[#4B5563] transition-colors duration-200 hover:text-[#374151] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E2A38]/35"
           aria-label="Open navigation menu"
           aria-expanded={false}
           aria-controls="medflow-sidebar"

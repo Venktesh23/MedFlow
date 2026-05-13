@@ -19,12 +19,12 @@ const statusStyles: Record<AppointmentStatus, { label: string; badge: string; bo
   },
   "in-progress": {
     label: "In Progress",
-    badge: "bg-[#047857] text-white",
-    border: "border-[#047857]",
+    badge: "bg-[#1E2A38] text-white",
+    border: "border-[#1E2A38]",
   },
   completed: {
     label: "Completed",
-    badge: "bg-[rgba(4,120,87,0.12)] text-[#065f46]",
+    badge: "bg-[rgba(30,42,56,0.12)] text-[#1E2A38]",
     border: "border-[#E5E7EB]",
   },
 };

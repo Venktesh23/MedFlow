@@ -1,5 +1,6 @@
 /** @import must precede all other statements */
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -13,9 +14,9 @@
   */
   :root {
     --medflow-page-background: #fafafa;
-    /* Dark emerald — primary actions & brand accents */
-    --medflow-primary: #047857;
-    --medflow-primary-hover: #065f46;
+    /* Dark navy — primary actions & brand accents */
+    --medflow-primary: #1E2A38;
+    --medflow-primary-hover: #2d3f52;
     --medflow-primary-foreground: #ffffff;
 
     --background: 0 0% 100%;
@@ -126,7 +127,7 @@
 
   .medflow-primary-button:hover {
     background-color: var(--medflow-primary-hover);
-    box-shadow: 0 4px 14px rgba(4, 120, 87, 0.35);
+    box-shadow: 0 4px 14px rgba(30, 42, 56, 0.35);
   }
 
   .medflow-primary-button:active {
@@ -198,7 +199,8 @@
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply text-foreground antialiased;
+    background-color: var(--medflow-page-background);
   }
 
   /* Baseline motion for interactive controls (does not override explicit durations on components) */

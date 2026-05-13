@@ -11,12 +11,13 @@ export async function listPatients(req, res) {
   const search = req.query.search?.trim?.();
   const filter = search
     ? {
+        userId: req.user._id,
         $or: [
           { name: new RegExp(escapeRegex(search), "i") },
           { contact: new RegExp(escapeRegex(search), "i") },
         ],
       }
-    : {};
+    : { userId: req.user._id };
 
   const patients = await Patient.find(filter).sort({ createdAt: -1 });
   const patientIds = patients.map((patient) => patient._id);
@@ -46,7 +47,7 @@ export async function listPatients(req, res) {
 }
 
 export async function getPatientById(req, res) {
-  const patient = await Patient.findById(req.params.id);
+  const patient = await Patient.findOne({ _id: req.params.id, userId: req.user._id });
 
   if (!patient) {
     return sendError(res, 404, {
@@ -56,8 +57,8 @@ export async function getPatientById(req, res) {
   }
 
   const [appointments, notes] = await Promise.all([
-    Appointment.find({ patientId: patient._id }).sort({ date: -1, time: -1 }),
-    Note.find({ patientId: patient._id }).sort({ createdAt: -1 }),
+    Appointment.find({ patientId: patient._id, userId: req.user._id }).sort({ date: -1, time: -1 }),
+    Note.find({ patientId: patient._id, userId: req.user._id }).sort({ createdAt: -1 }),
   ]);
 
   return sendSuccess(res, {
@@ -69,6 +70,7 @@ export async function getPatientById(req, res) {
 
 export async function createPatient(req, res) {
   const patient = await Patient.create({
+    userId: req.user._id,
     name: req.body.name,
     dob: req.body.dob || "",
     contact: req.body.contact || "",
@@ -79,8 +81,8 @@ export async function createPatient(req, res) {
 }
 
 export async function updatePatient(req, res) {
-  const patient = await Patient.findByIdAndUpdate(
-    req.params.id,
+  const patient = await Patient.findOneAndUpdate(
+    { _id: req.params.id, userId: req.user._id },
     {
       name: req.body.name,
       dob: req.body.dob,
@@ -105,7 +107,7 @@ export async function updatePatient(req, res) {
  * With ?force=true (or body.force), deletes all related notes and appointments first.
  */
 export async function deletePatient(req, res) {
-  const patient = await Patient.findById(req.params.id);
+  const patient = await Patient.findOne({ _id: req.params.id, userId: req.user._id });
 
   if (!patient) {
     return sendError(res, 404, {

@@ -1,5 +1,6 @@
 // Express server bootstrap with env validation, CORS, routes, and Mongo startup.
 import "dotenv/config";
+import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
 import appointmentRoutes from "./routes/appointments.js";
@@ -14,6 +15,9 @@ import devRoutes from "./routes/dev.js";
 import { requireAuth } from "./middleware/auth.js";
 import { connectMongo } from "./services/mongoService.js";
 import { dedupeOverlappingAppointments } from "./services/appointmentOverlapCleanup.js";
+import { rehydrateQueuedJobs } from "./services/agentJobQueue.js";
+import { purgeOldAgentJobs } from "./services/agentJobCleanup.js";
+import { seedDemoAccount } from "./services/seedDemoAccount.js";
 import { sendError, sendSuccess } from "./utils/http.js";
 
 // Express entry point for the MedFlow backend API.
@@ -53,6 +57,7 @@ app.use(
     credentials: true,
   }),
 );
+app.use(cookieParser());
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -65,7 +70,6 @@ app.get("/health", (_req, res) => {
 
 app.use((req, res, next) => {
   if (mongoConnected) return next();
-  if (req.path === "/health") return next();
   return sendError(res, 503, {
     code: "DATABASE_UNAVAILABLE",
     message: "Database connection is unavailable. Retry shortly.",
@@ -81,7 +85,9 @@ app.use("/api/calendar", calendarRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/agent", agentRoutes);
-app.use("/api/dev", devRoutes);
+if (process.env.NODE_ENV !== "production") {
+  app.use("/api/dev", devRoutes);
+}
 
 app.use((err, _req, res, _next) => {
   if (err?.code === "LIMIT_FILE_SIZE") {
@@ -135,6 +141,22 @@ function scheduleMongoReconnect() {
   }, 5000);
 }
 
+function startAgentJobCleanupTimer() {
+  const raw = Number(process.env.AGENT_JOB_CLEANUP_INTERVAL_MS || 6 * 60 * 60 * 1000);
+  const intervalMs = Number.isFinite(raw) && raw > 0 ? raw : 6 * 60 * 60 * 1000;
+
+  setInterval(async () => {
+    try {
+      const { deletedCount } = await purgeOldAgentJobs();
+      if (deletedCount > 0) {
+        console.log(`[MedFlow][AgentJobs] Purged ${deletedCount} old agent jobs.`);
+      }
+    } catch (error) {
+      console.error("[MedFlow][AgentJobs] Cleanup failed.", error?.message || error);
+    }
+  }, intervalMs);
+}
+
 connectMongo()
   .then(async () => {
     mongoConnected = true;
@@ -149,6 +171,30 @@ connectMongo()
     } catch (error) {
       console.error("[MedFlow][Appointments] Overlap cleanup failed.", error?.message || error);
     }
+
+    try {
+      await seedDemoAccount();
+    } catch (error) {
+      console.error("[MedFlow][Seed] Demo account seed failed.", error?.message || error);
+    }
+
+    try {
+      await rehydrateQueuedJobs();
+      console.log("[MedFlow][AgentJobs] Rehydrated queued jobs.");
+    } catch (error) {
+      console.error("[MedFlow][AgentJobs] Rehydration failed.", error?.message || error);
+    }
+
+    try {
+      const { deletedCount } = await purgeOldAgentJobs();
+      if (deletedCount > 0) {
+        console.log(`[MedFlow][AgentJobs] Purged ${deletedCount} old agent jobs.`);
+      }
+    } catch (error) {
+      console.error("[MedFlow][AgentJobs] Cleanup failed.", error?.message || error);
+    }
+
+    startAgentJobCleanupTimer();
   })
   .catch((error) => {
     mongoConnected = false;

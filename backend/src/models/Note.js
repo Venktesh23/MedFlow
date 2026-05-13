@@ -12,6 +12,11 @@ const soapNoteSchema = new mongoose.Schema(
 
 const noteSchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
     patientId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Patient",
@@ -38,6 +43,7 @@ const noteSchema = new mongoose.Schema(
 );
 
 noteSchema.index({ patientId: 1, createdAt: -1 });
+noteSchema.index({ userId: 1, createdAt: -1 });
 noteSchema.index({ tags: 1 });
 
 export const Note = mongoose.models.Note || mongoose.model("Note", noteSchema);

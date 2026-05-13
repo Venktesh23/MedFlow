@@ -12,7 +12,7 @@ const NotFound = () => {
           <p className="text-[#6B7280] mt-1">This URL is not part of MedFlow.</p>
         </header>
         <div className="bg-white border border-[#E5E7EB] rounded-xl shadow-sm p-8 max-w-[480px] w-full text-center">
-          <div className="mx-auto h-12 w-12 rounded-full bg-[rgba(4, 120, 87,0.12)] text-[#047857] flex items-center justify-center font-bold">
+          <div className="mx-auto h-12 w-12 rounded-full bg-[rgba(30, 42, 56,0.12)] text-[#1E2A38] flex items-center justify-center font-bold">
             404
           </div>
           <p className="text-[#1A1A2E] text-lg font-semibold mt-4">We couldn&apos;t find that page</p>
@@ -20,7 +20,7 @@ const NotFound = () => {
             `{location.pathname}` does not match any MedFlow page.
           </p>
           <Link
-            to="/"
+            to="/dashboard"
             className="inline-flex mt-6 medflow-primary-button rounded-lg px-5 py-2.5 font-semibold"
           >
             Return to Dashboard

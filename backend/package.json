@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
+    "test": "node --test",
     "test:agents:e2e": "node scripts/e2e-agents-text-only.mjs",
     "cleanup:overlaps": "node scripts/remove-overlapping-appointments.mjs",
     "purge:app-data": "node scripts/purge-all-app-data.mjs DELETE_ALL_APP_DATA"
@@ -17,6 +18,7 @@
     "@anthropic-ai/sdk": "^0.95.1",
     "@deepgram/sdk": "^5.1.0",
     "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",

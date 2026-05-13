@@ -54,7 +54,7 @@ export default function Settings() {
                 onChange={(event) =>
                   setProfile((current) => ({ ...current, name: event.target.value }))
                 }
-                className="mt-2 w-full rounded-lg border border-[#E5E7EB] px-4 py-2 text-[#1A1A2E] outline-none focus:border-[#047857]"
+                className="mt-2 w-full rounded-lg border border-[#E5E7EB] px-4 py-2 text-[#1A1A2E] outline-none focus:border-[#1E2A38]"
               />
             </label>
             <label className="text-sm text-[#6B7280]">
@@ -64,7 +64,7 @@ export default function Settings() {
                 onChange={(event) =>
                   setProfile((current) => ({ ...current, specialty: event.target.value }))
                 }
-                className="mt-2 w-full rounded-lg border border-[#E5E7EB] px-4 py-2 text-[#1A1A2E] outline-none focus:border-[#047857]"
+                className="mt-2 w-full rounded-lg border border-[#E5E7EB] px-4 py-2 text-[#1A1A2E] outline-none focus:border-[#1E2A38]"
               />
             </label>
           </div>
@@ -84,7 +84,7 @@ export default function Settings() {
                 onChange={(event) =>
                   setProfile((current) => ({ ...current, clinicName: event.target.value }))
                 }
-                className="mt-2 w-full rounded-lg border border-[#E5E7EB] px-4 py-2 text-[#1A1A2E] outline-none focus:border-[#047857]"
+                className="mt-2 w-full rounded-lg border border-[#E5E7EB] px-4 py-2 text-[#1A1A2E] outline-none focus:border-[#1E2A38]"
               />
             </label>
             <label className="text-sm text-[#6B7280]">
@@ -97,7 +97,7 @@ export default function Settings() {
                     clinicHoursStart: Number(event.target.value),
                   }))
                 }
-                className="mt-2 w-full rounded-lg border border-[#E5E7EB] px-4 py-2 text-[#1A1A2E] outline-none focus:border-[#047857] bg-white"
+                className="mt-2 w-full rounded-lg border border-[#E5E7EB] px-4 py-2 text-[#1A1A2E] outline-none focus:border-[#1E2A38] bg-white"
               >
                 {HOUR_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
@@ -116,7 +116,7 @@ export default function Settings() {
                     clinicHoursEnd: Number(event.target.value),
                   }))
                 }
-                className="mt-2 w-full rounded-lg border border-[#E5E7EB] px-4 py-2 text-[#1A1A2E] outline-none focus:border-[#047857] bg-white"
+                className="mt-2 w-full rounded-lg border border-[#E5E7EB] px-4 py-2 text-[#1A1A2E] outline-none focus:border-[#1E2A38] bg-white"
               >
                 {HOUR_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>

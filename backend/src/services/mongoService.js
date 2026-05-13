@@ -16,12 +16,17 @@ export async function connectMongo() {
   }
 
   if (!connectionPromise) {
-    connectionPromise = mongoose.connect(process.env.MONGODB_URI, {
-      dbName: process.env.MONGODB_DATABASE || "medflow",
-      family: 4,
-      retryWrites: true,
-      serverSelectionTimeoutMS: 15000,
-    });
+    connectionPromise = mongoose
+      .connect(process.env.MONGODB_URI, {
+        dbName: process.env.MONGODB_DATABASE || "medflow",
+        family: 4,
+        retryWrites: true,
+        serverSelectionTimeoutMS: 15000,
+      })
+      .catch((err) => {
+        connectionPromise = null;
+        throw err;
+      });
   }
 
   await connectionPromise;
@@ -50,22 +55,27 @@ function escapeRegex(value = "") {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-export async function upsertPatient(patient = {}) {
+export async function upsertPatient(patient = {}, userId = null) {
   try {
     await connectMongo();
     const patientId = patient.patientId || patient.patient_id || patient.id;
 
     if (patientId && mongoose.isValidObjectId(patientId)) {
-      const updated = await Patient.findByIdAndUpdate(
-        patientId,
+      const filter = { _id: patientId };
+      if (userId) filter.userId = userId;
+      const updated = await Patient.findOneAndUpdate(
+        filter,
         {
           name: patient.name,
           dob: patient.dob,
           contact: patient.contact,
           insurance: patient.insurance,
         },
-        { new: true, upsert: true, setDefaultsOnInsert: true },
+        { new: true, upsert: false },
       );
+      if (!updated) {
+        return { ok: false, error: { code: "PATIENT_NOT_FOUND", message: "Patient not found." } };
+      }
       return { ok: true, data: serializeDocument(updated) };
     }
 
@@ -79,15 +89,23 @@ export async function upsertPatient(patient = {}) {
       };
     }
 
+    const nameFilter = { name: new RegExp(`^${escapeRegex(patient.name.trim())}$`, "i") };
+    if (userId) nameFilter.userId = userId;
+
+    const setOnInsert = userId ? { userId } : {};
+
     const updated = await Patient.findOneAndUpdate(
-      { name: new RegExp(`^${escapeRegex(patient.name.trim())}$`, "i") },
+      nameFilter,
       {
-        name: patient.name.trim(),
-        dob: patient.dob || "",
-        contact: patient.contact || "",
-        insurance: patient.insurance || "",
+        $set: {
+          name: patient.name.trim(),
+          dob: patient.dob || "",
+          contact: patient.contact || "",
+          insurance: patient.insurance || "",
+        },
+        $setOnInsert: setOnInsert,
       },
-      { new: true, upsert: true, setDefaultsOnInsert: true },
+      { new: true, upsert: true, setDefaultsOnInsert: true, runValidators: true },
     );
 
     return { ok: true, data: serializeDocument(updated) };
@@ -143,6 +161,7 @@ export async function saveClinicalNote({
   patientId,
   appointment_id = null,
   appointmentId = null,
+  userId = null,
   transcript,
   rawTranscript = null,
   soap_note,
@@ -160,6 +179,7 @@ export async function saveClinicalNote({
     const note = await Note.create({
       patientId: patientId || patient_id,
       appointmentId: appointmentId || appointment_id || null,
+      userId: userId || null,
       transcript,
       rawTranscript: rawTranscript || null,
       soapNote: soapNote || soap_note,

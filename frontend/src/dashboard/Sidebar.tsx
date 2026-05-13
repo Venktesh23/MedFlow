@@ -47,7 +47,7 @@ export function Sidebar({ isOpen, onClose, navItems, logoUrl }: SidebarProps) {
             )}
           </div>
           <Link
-            to="/"
+            to="/dashboard"
             onClick={onClose}
             className="flex min-h-0 shrink-0 items-center justify-center overflow-hidden px-1 py-2 transition-opacity duration-200"
           >
@@ -58,7 +58,7 @@ export function Sidebar({ isOpen, onClose, navItems, logoUrl }: SidebarProps) {
 
         <nav className="flex flex-col gap-1 px-2 mt-0 flex-1 overflow-y-auto">
           {navItems.map(({ icon: Icon, label, path }) => {
-            const active = path === "/" ? pathname === path : pathname.startsWith(path);
+            const active = path === "/dashboard" ? pathname === path : pathname.startsWith(path);
             return (
               <Link
                 key={path}
@@ -90,7 +90,7 @@ export function Sidebar({ isOpen, onClose, navItems, logoUrl }: SidebarProps) {
             onClick={() => {
               logout();
               onClose();
-              navigate("/login", { replace: true });
+              navigate("/", { replace: true });
             }}
             className="w-full rounded-xl border border-white/15 bg-white/[0.06] px-4 py-3 text-center text-sm font-semibold text-white transition-colors duration-200 hover:bg-white/[0.12] active:scale-[0.98]"
           >

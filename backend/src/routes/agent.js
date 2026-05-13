@@ -1,10 +1,13 @@
 import { Router } from "express";
 import multer from "multer";
 import {
+  getAgentJobStatus,
   getPatientMemory,
   getPatientNotes,
   runAudioAgent,
+  runAudioAgentAsync,
   runTranscriptAgent,
+  runTranscriptAgentAsync,
   validateAgentAudioUpload,
   validateAgentTranscript,
   validatePatientIdParam,
@@ -27,10 +30,25 @@ router.post(
   asyncHandler(runAudioAgent),
 );
 
+router.post(
+  "/audio-session-async",
+  upload.single("audio"),
+  validateAgentAudioUpload,
+  asyncHandler(runAudioAgentAsync),
+);
+
 router.post("/transcript-session", validateAgentTranscript, asyncHandler(runTranscriptAgent));
+
+router.post(
+  "/transcript-session-async",
+  validateAgentTranscript,
+  asyncHandler(runTranscriptAgentAsync),
+);
 
 router.get("/patients/:patientId/memory", validatePatientIdParam, asyncHandler(getPatientMemory));
 
 router.get("/patients/:patientId/notes", validatePatientIdParam, asyncHandler(getPatientNotes));
+
+router.get("/jobs/:jobId", asyncHandler(getAgentJobStatus));
 
 export default router;

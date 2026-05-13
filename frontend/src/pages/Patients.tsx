@@ -67,12 +67,12 @@ export default function Patients() {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search by patient name"
-            className="flex-1 rounded-lg border border-[#E5E7EB] px-4 py-2 outline-none focus:border-[#047857]"
+            className="flex-1 rounded-lg border border-[#E5E7EB] px-4 py-2 outline-none focus:border-[#1E2A38]"
           />
           <select
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
-            className="rounded-lg border border-[#E5E7EB] px-4 py-2 outline-none focus:border-[#047857]"
+            className="rounded-lg border border-[#E5E7EB] px-4 py-2 outline-none focus:border-[#1E2A38]"
           >
             <option value="all">All patients</option>
             <option value="upcoming">Upcoming appointment</option>
@@ -98,13 +98,13 @@ export default function Patients() {
           {filteredPatients.map((patient) => (
             <div
               key={patient._id}
-              className="bg-white border border-[#E5E7EB] rounded-xl shadow-sm flex items-center gap-2 px-4 py-3 hover:border-[#047857] transition-colors"
+              className="bg-white border border-[#E5E7EB] rounded-xl shadow-sm flex items-center gap-2 px-4 py-3 hover:border-[#1E2A38] transition-colors"
             >
               <Link
                 to={`/patients/${patient._id}`}
-                className="flex min-w-0 flex-1 items-center gap-3 outline-none focus-visible:ring-2 focus-visible:ring-[#047857]/35 focus-visible:ring-offset-2 rounded-lg"
+                className="flex min-w-0 flex-1 items-center gap-3 outline-none focus-visible:ring-2 focus-visible:ring-[#1E2A38]/35 focus-visible:ring-offset-2 rounded-lg"
               >
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[rgba(4,120,87,0.12)] text-sm font-bold text-[#065f46]">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[rgba(30,42,56,0.12)] text-sm font-bold text-[#1E2A38]">
                   {patient.name
                     .split(" ")
                     .slice(0, 2)
@@ -127,7 +127,7 @@ export default function Patients() {
               </Link>
               <Link
                 to={`/patients/${patient._id}?edit=1`}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center self-center rounded-lg text-[#6B7280] hover:bg-[rgba(4,120,87,0.08)] hover:text-[#047857] transition-colors"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center self-center rounded-lg text-[#6B7280] hover:bg-[rgba(30,42,56,0.08)] hover:text-[#1E2A38] transition-colors"
                 aria-label={`Edit ${patient.name}`}
                 title="Edit patient details"
                 onClick={(event) => event.stopPropagation()}

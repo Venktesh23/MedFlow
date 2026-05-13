@@ -2,6 +2,11 @@ import mongoose from "mongoose";
 
 const appointmentSchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
     patientId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Patient",
@@ -31,8 +36,8 @@ const appointmentSchema = new mongoose.Schema(
   { timestamps: { createdAt: "createdAt", updatedAt: "updatedAt" } },
 );
 
-appointmentSchema.index({ date: 1, time: 1 });
-appointmentSchema.index({ patientId: 1, date: -1 });
+appointmentSchema.index({ userId: 1, date: 1, time: 1 });
+appointmentSchema.index({ userId: 1, patientId: 1, date: -1 });
 
 export const Appointment =
   mongoose.models.Appointment ||

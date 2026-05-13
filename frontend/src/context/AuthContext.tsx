@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, responseData } from "@/services/api";
 
 type AuthUser = {
@@ -29,7 +29,7 @@ type AuthContextValue = {
     clinicHoursEnd?: number;
     specialty?: string;
   }) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -45,6 +45,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return null;
     }
   });
+
+  useEffect(() => {
+    if (user || !token) return;
+    api.get("/auth/me").then((res) => {
+      const data = responseData<{ user: AuthUser }>(res);
+      setUser(data.user);
+    }).catch(() => {});
+  }, []);
 
   const saveSession = (nextToken: string, nextUser: AuthUser) => {
     localStorage.setItem("medflow_token", nextToken);
@@ -73,7 +81,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem("medflow_user", JSON.stringify(data.user));
         setUser(data.user);
       },
-      logout: () => {
+      logout: async () => {
+        try {
+          await api.post("/auth/logout");
+        } catch {
+          // ignore — clear local state regardless
+        }
         localStorage.removeItem("medflow_token");
         localStorage.removeItem("medflow_user");
         setToken(null);

@@ -205,7 +205,7 @@ export async function generateSOAPNote(transcript, patientContext = "") {
   const { parsed } = await completeJsonFromClaude({
     system: SOAP_SYSTEM_PROMPT,
     userContent: buildSoapUserContent(transcript, patientContext),
-    maxTokens: 1024,
+    maxTokens: 4096,
   });
   return parsed;
 }
@@ -236,10 +236,11 @@ export async function parseCalendarCommand(command, options = {}) {
     userContent = `Recent conversation:\n${formatted}\n\nDoctor's latest message:\n${userContent}`;
   }
 
-  const { parsed } = await completeJsonFromClaude({
+  const { parsed, lastRaw } = await completeJsonFromClaude({
     system,
     userContent,
     maxTokens: 1536,
   });
-  return parsed;
+
+  return { parsed, raw: lastRaw };
 }

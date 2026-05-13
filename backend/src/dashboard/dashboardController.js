@@ -9,11 +9,12 @@ function todayString() {
 /**
  * Aggregates today’s appointments and recent clinical notes for the dashboard UI.
  */
-export async function getDashboardSummary(_req, res) {
+export async function getDashboardSummary(req, res) {
   const date = todayString();
+  const userId = req.user._id;
   const [appointments, notes] = await Promise.all([
-    Appointment.find({ date }).populate("patientId").sort({ date: 1, time: 1 }).lean(),
-    Note.find({})
+    Appointment.find({ date, userId }).populate("patientId").sort({ date: 1, time: 1 }).lean(),
+    Note.find({ userId })
       .populate("patientId")
       .populate("appointmentId")
       .sort({ createdAt: -1 })

@@ -147,13 +147,6 @@ async function transcribeWithDeepgram(audioBuffer, options = {}) {
       paragraphs: true,
       utterances: true,
     },
-    options.mimetype
-      ? {
-          headers: {
-            "Content-Type": options.mimetype,
-          },
-        }
-      : undefined,
   );
 }
 

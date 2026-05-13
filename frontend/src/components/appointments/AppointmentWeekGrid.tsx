@@ -84,9 +84,9 @@ function formatHourLabel(hour24: number): string {
 }
 
 function statusBorder(status: WeekGridAppointment["status"]) {
-  if (status === "completed") return "border-[#047857]/80 bg-[rgba(4,120,87,0.12)]";
-  if (status === "in-progress") return "border-[#047857] bg-[#047857] text-white";
-  return "border-[#047857]/40 bg-[rgba(4,120,87,0.08)]";
+  if (status === "completed") return "border-[#1E2A38]/80 bg-[rgba(30,42,56,0.12)]";
+  if (status === "in-progress") return "border-[#1E2A38] bg-[#1E2A38] text-white";
+  return "border-[#1E2A38]/40 bg-[rgba(30,42,56,0.08)]";
 }
 
 function statusTextClass(status: WeekGridAppointment["status"]) {
@@ -176,7 +176,7 @@ export function AppointmentWeekGrid({
             <button
               type="button"
               onClick={onPrevWeek}
-              className="px-2.5 py-1.5 text-sm text-[#047857] hover:bg-[rgba(4,120,87,0.06)]"
+              className="px-2.5 py-1.5 text-sm text-[#1E2A38] hover:bg-[rgba(30,42,56,0.06)]"
               aria-label="Previous week"
             >
               ‹
@@ -184,7 +184,7 @@ export function AppointmentWeekGrid({
             <button
               type="button"
               onClick={onNextWeek}
-              className="px-2.5 py-1.5 text-sm text-[#047857] hover:bg-[rgba(4,120,87,0.06)]"
+              className="px-2.5 py-1.5 text-sm text-[#1E2A38] hover:bg-[rgba(30,42,56,0.06)]"
               aria-label="Next week"
             >
               ›
@@ -201,10 +201,10 @@ export function AppointmentWeekGrid({
             {dayMetas.map((dm) => (
               <div
                 key={dm.ymd}
-                className={`px-2 py-3 text-center ${dm.isToday ? "bg-[rgba(4,120,87,0.08)]" : ""}`}
+                className={`px-2 py-3 text-center ${dm.isToday ? "bg-[rgba(30,42,56,0.08)]" : ""}`}
               >
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6B7280]">{dm.weekdayShort}</p>
-                <p className={`text-lg font-bold ${dm.isToday ? "text-[#047857]" : "text-[#1E2939]"}`}>
+                <p className={`text-lg font-bold ${dm.isToday ? "text-[#1E2A38]" : "text-[#1E2939]"}`}>
                   {dm.date.getDate()}
                 </p>
               </div>

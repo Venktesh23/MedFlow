@@ -19,12 +19,14 @@ function bodyIds(body) {
  * requires a Mongo patient id for context retrieval and note persistence — resolve it
  * from the appointment when only appointmentId was sent (common from visit sessions).
  */
-async function resolveSessionPatientIds({ patientId, appointmentId }) {
+async function resolveSessionPatientIds({ patientId, appointmentId, userId }) {
   let pid = patientId && String(patientId).trim() ? String(patientId).trim() : null;
   const aid = appointmentId && String(appointmentId).trim() ? String(appointmentId).trim() : null;
 
   if (!pid && aid && mongoose.isValidObjectId(aid)) {
-    const appt = await Appointment.findById(aid).select("patientId").lean();
+    const filter = { _id: aid };
+    if (userId) filter.userId = userId;
+    const appt = await Appointment.findOne(filter).select("patientId").lean();
     if (appt?.patientId) {
       pid = String(appt.patientId);
     }
@@ -96,7 +98,7 @@ export function validateNoteUpdate(req, res, next) {
 
 export async function uploadAudio(req, res) {
   const ids = bodyIds(req.body);
-  const { patientId, appointmentId } = await resolveSessionPatientIds(ids);
+  const { patientId, appointmentId } = await resolveSessionPatientIds({ ...ids, userId: req.user._id });
 
   if (!patientId) {
     return sendError(res, 400, {
@@ -111,6 +113,7 @@ export async function uploadAudio(req, res) {
     mimetype: req.file.mimetype,
     patient_id: patientId,
     appointment_id: appointmentId,
+    userId: req.user._id,
   });
 
   if (!result.ok) {
@@ -122,7 +125,7 @@ export async function uploadAudio(req, res) {
 
 export async function submitTranscript(req, res) {
   const ids = bodyIds(req.body);
-  const { patientId, appointmentId } = await resolveSessionPatientIds(ids);
+  const { patientId, appointmentId } = await resolveSessionPatientIds({ ...ids, userId: req.user._id });
 
   if (!patientId) {
     return sendError(res, 400, {
@@ -136,6 +139,7 @@ export async function submitTranscript(req, res) {
     transcript: req.body.transcript.trim(),
     patient_id: patientId,
     appointment_id: appointmentId,
+    userId: req.user._id,
   });
 
   if (!result.ok) {
@@ -146,7 +150,7 @@ export async function submitTranscript(req, res) {
 }
 
 export async function listNotesByPatient(req, res) {
-  const notes = await Note.find({ patientId: req.params.patientId })
+  const notes = await Note.find({ patientId: req.params.patientId, userId: req.user._id })
     .populate("patientId")
     .populate("appointmentId")
     .sort({ createdAt: -1 });
@@ -155,7 +159,7 @@ export async function listNotesByPatient(req, res) {
 }
 
 export async function listNotes(req, res) {
-  const filter = {};
+  const filter = { userId: req.user._id };
   if (req.query.patientId) filter.patientId = req.query.patientId;
   if (req.query.tag) filter.tags = req.query.tag;
 
@@ -168,7 +172,7 @@ export async function listNotes(req, res) {
 }
 
 export async function updateNote(req, res) {
-  const existing = await Note.findById(req.params.id);
+  const existing = await Note.findOne({ _id: req.params.id, userId: req.user._id });
 
   if (!existing) {
     return sendError(res, 404, {
@@ -191,7 +195,7 @@ export async function updateNote(req, res) {
 }
 
 export async function deleteNote(req, res) {
-  const note = await Note.findByIdAndDelete(req.params.id);
+  const note = await Note.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
 
   if (!note) {
     return sendError(res, 404, {

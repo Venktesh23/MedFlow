@@ -27,6 +27,7 @@ export default function Session() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaChunksRef = useRef<BlobPart[]>([]);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const pollTimerRef = useRef<number | null>(null);
   const [appointment, setAppointment] = useState<any>(null);
   const [note, setNote] = useState<ClinicalNote>(emptyNote);
   const [noteId, setNoteId] = useState<string | null>(null);
@@ -41,8 +42,12 @@ export default function Session() {
   const [deepgramConfigured, setDeepgramConfigured] = useState(false);
   const [anthropicConfigured, setAnthropicConfigured] = useState(false);
   const [recordingCloud, setRecordingCloud] = useState(false);
+  const [jobStatus, setJobStatus] = useState<
+    "queued" | "processing" | "completed" | "failed" | null
+  >(null);
 
   const isRecording = speech.isListening || recordingCloud;
+  const noteSavedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,17 +91,116 @@ export default function Session() {
       const response = await api.get(`/appointments/${appointmentId}`);
       const data = responseData<{ appointment: any }>(response);
       setAppointment(data.appointment);
-      await api.put(`/appointments/${appointmentId}`, { status: "in-progress" });
     } catch {
       setError("Unable to load appointment details.");
     } finally {
       setLoading(false);
     }
+    api.put(`/appointments/${appointmentId}`, { status: "in-progress" }).catch(() => {});
   }
 
   useEffect(() => {
+    noteSavedRef.current = noteSaved;
+  }, [noteSaved]);
+
+  useEffect(() => {
     if (appointmentId) void loadAppointment();
+    return () => {
+      if (!noteSavedRef.current && appointmentId) {
+        api.put(`/appointments/${appointmentId}`, { status: "upcoming" }).catch(() => {});
+      }
+    };
   }, [appointmentId]);
+
+  useEffect(() => {
+    return () => {
+      if (pollTimerRef.current) {
+        window.clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  type AgentJob = {
+    jobId: string;
+    status: "queued" | "processing" | "completed" | "failed";
+    resultSnapshot?: {
+      soapNote?: ClinicalNote;
+      soap_note?: ClinicalNote;
+      note?: { _id?: string };
+      transcript?: string;
+      transcriptCleaned?: boolean;
+    };
+    errorSnapshot?: { message?: string };
+  };
+
+  function applyAgentResult(data?: AgentJob["resultSnapshot"]) {
+    if (!data) return;
+    const soap = data.soapNote || data.soap_note || emptyNote;
+    setNote(soap);
+    setNoteId(data.note?._id || null);
+    if (data.transcript?.trim()) {
+      speech.setTranscript(data.transcript);
+    }
+    setMessage(
+      data.transcriptCleaned
+        ? "Clinical note saved. The transcript below was cleaned from live capture for a clearer chart."
+        : "Clinical note saved to your notes.",
+    );
+    setNoteSaved(true);
+  }
+
+  async function pollJob(jobId: string) {
+    try {
+      const response = await api.get(`/agent/jobs/${jobId}`);
+      const job = responseData<AgentJob>(response);
+      setJobStatus(job.status);
+      if (job.status === "completed") {
+        if (pollTimerRef.current) {
+          window.clearInterval(pollTimerRef.current);
+          pollTimerRef.current = null;
+        }
+        applyAgentResult(job.resultSnapshot);
+        setSaving(false);
+        setUploading(false);
+        return true;
+      }
+
+      if (job.status === "failed") {
+        if (pollTimerRef.current) {
+          window.clearInterval(pollTimerRef.current);
+          pollTimerRef.current = null;
+        }
+        setSaving(false);
+        setUploading(false);
+        setMessage(job.errorSnapshot?.message || "Unable to generate or save the clinical note.");
+        return true;
+      }
+      return false;
+    } catch {
+      if (pollTimerRef.current) {
+        window.clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+      setSaving(false);
+      setUploading(false);
+      setJobStatus(null);
+      setMessage("Unable to fetch job status.");
+      return true;
+    }
+  }
+
+  async function startJobPolling(jobId: string) {
+    if (pollTimerRef.current) {
+      window.clearInterval(pollTimerRef.current);
+    }
+    setJobStatus("queued");
+    const done = await pollJob(jobId);
+    if (done) return;
+    pollTimerRef.current = window.setInterval(() => {
+      void pollJob(jobId);
+    }, 1500);
+  }
 
   async function saveTranscript() {
     if (!anthropicConfigured) {
@@ -110,36 +214,27 @@ export default function Session() {
       return;
     }
 
+    if (!appointment?.patientId?._id) {
+      setMessage("Patient information not yet loaded. Please wait and try again.");
+      return;
+    }
+
     setSaving(true);
     setMessage("");
     setNoteSaved(false);
+    setJobStatus("queued");
     try {
-      const response = await api.post("/session/transcript", {
+      const response = await api.post("/agent/transcript-session-async", {
         appointmentId,
-        patientId: appointment?.patientId?._id,
+        patientId: appointment.patientId._id,
         transcript: speech.fullTranscript,
       });
-      const data = responseData<{
-        soapNote: ClinicalNote;
-        note?: { _id: string };
-        transcript?: string;
-        transcriptCleaned?: boolean;
-      }>(response);
-      setNote(data.soapNote);
-      setNoteId(data.note?._id || null);
-      if (data.transcript?.trim()) {
-        speech.setTranscript(data.transcript);
-      }
-      setMessage(
-        data.transcriptCleaned
-          ? "Clinical note saved. The transcript below was cleaned from live capture for a clearer chart."
-          : "Clinical note saved to your notes.",
-      );
-      setNoteSaved(true);
+      const data = responseData<{ jobId: string }>(response);
+      setMessage("Generating clinical note... this may take a moment.");
+      await startJobPolling(data.jobId);
     } catch {
-      setMessage("Unable to generate or save the clinical note.");
-    } finally {
       setSaving(false);
+      setMessage("Unable to generate or save the clinical note.");
     }
   }
 
@@ -176,8 +271,13 @@ export default function Session() {
       );
       return;
     }
+    if (!appointment?.patientId?._id) {
+      setMessage("Patient information not yet loaded. Please wait and try again.");
+      return;
+    }
     setUploading(true);
     setMessage("");
+    setJobStatus("queued");
     try {
       const body = new FormData();
       const name =
@@ -192,21 +292,15 @@ export default function Session() {
       body.append("appointmentId", String(appointmentId || ""));
       body.append("patientId", String(appointment?.patientId?._id || ""));
 
-      const response = await api.post("/session/upload-audio", body, {
+      const response = await api.post("/agent/audio-session-async", body, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      const data = responseData<{ transcript: string; soapNote: ClinicalNote; note?: { _id: string } }>(
-        response,
-      );
-      speech.setTranscript(data.transcript || "");
-      setNote(data.soapNote);
-      setNoteId(data.note?._id || null);
-      setMessage("Audio transcribed on the server and clinical note generated.");
-      setNoteSaved(true);
+      const data = responseData<{ jobId: string }>(response);
+      setMessage("Uploading audio for transcription... this may take a moment.");
+      await startJobPolling(data.jobId);
     } catch {
-      setMessage("Audio upload failed. Try again or paste a transcript and use Regenerate.");
-    } finally {
       setUploading(false);
+      setMessage("Audio upload failed. Try again or paste a transcript and use Regenerate.");
     }
   }
 
@@ -242,6 +336,7 @@ export default function Session() {
     }
 
     setNoteSaved(false);
+    setJobStatus(null);
 
     if (deepgramConfigured) {
       try {
@@ -282,6 +377,7 @@ export default function Session() {
 
     setSaving(true);
     setMessage("");
+    setJobStatus(null);
     try {
       await api.put(`/session/notes/${noteId}`, { soapNote: note });
       setMessage("Edited clinical note saved.");
@@ -366,11 +462,11 @@ export default function Session() {
                   onClick={() => void toggleRecording()}
                   idleLabel="Start recording"
                   recordingLabel="Stop & save note"
-                  disabled={!anthropicConfigured}
+                  disabled={!anthropicConfigured || loading}
                 />
                 <div
                   className={`tabular-nums text-sm font-semibold tracking-wide ${
-                    isRecording ? "text-[#047857]" : "text-[#9CA3AF]"
+                    isRecording ? "text-[#1E2A38]" : "text-[#9CA3AF]"
                   }`}
                   aria-live="polite"
                 >
@@ -383,13 +479,26 @@ export default function Session() {
                     <>Duration {formatRecordingDuration(recordingSeconds)}</>
                   )}
                 </div>
+                {jobStatus && (
+                  <div
+                    className={`text-xs font-semibold uppercase tracking-wider px-3 py-1 rounded-full border ${
+                      jobStatus === "failed"
+                        ? "border-[#FCA5A5] text-[#B91C1C] bg-[rgba(248,113,113,0.12)]"
+                        : jobStatus === "completed"
+                          ? "border-[#a8b8cc] text-[#1E2A38] bg-[rgba(30,42,56,0.12)]"
+                          : "border-[#93C5FD] text-[#1D4ED8] bg-[rgba(59,130,246,0.12)]"
+                    }`}
+                  >
+                    Agent status: {jobStatus}
+                  </div>
+                )}
               </div>
               <div className="flex flex-wrap justify-center gap-3">
                 <button
                   type="button"
                   onClick={() => void saveTranscript()}
-                  disabled={saving || !anthropicConfigured}
-                  className="px-4 py-2 rounded-lg border border-[#047857] text-[#047857] font-medium hover:bg-[rgba(4,120,87,0.10)] transition-colors disabled:opacity-60"
+                  disabled={saving || !anthropicConfigured || loading}
+                  className="px-4 py-2 rounded-lg border border-[#1E2A38] text-[#1E2A38] font-medium hover:bg-[rgba(30,42,56,0.10)] transition-colors disabled:opacity-60"
                 >
                   {saving ? "Saving…" : "Regenerate from transcript"}
                 </button>
@@ -410,7 +519,7 @@ export default function Session() {
               {noteSaved && (
                 <Link
                   to="/notes"
-                  className="text-sm font-medium text-[#047857] hover:underline"
+                  className="text-sm font-medium text-[#1E2A38] hover:underline"
                 >
                   Open Notes tab
                 </Link>
@@ -421,7 +530,7 @@ export default function Session() {
               <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
                 <h2 className="text-[#1A1A2E] font-semibold">Live transcript</h2>
                 {isRecording && (
-                  <span className="text-xs font-semibold uppercase tracking-wider text-[#047857]">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-[#1E2A38]">
                     {recordingCloud ? "Capturing audio" : "Live"}
                   </span>
                 )}
@@ -430,7 +539,7 @@ export default function Session() {
                 value={recordingCloud ? "" : speech.fullTranscript}
                 onChange={(event) => speech.setTranscript(event.target.value)}
                 readOnly={speech.isListening || recordingCloud}
-                className={`w-full min-h-[280px] rounded-xl border border-[#E5E7EB] p-4 text-[#1A1A2E] outline-none focus:border-[#047857] ${
+                className={`w-full min-h-[280px] rounded-xl border border-[#E5E7EB] p-4 text-[#1A1A2E] outline-none focus:border-[#1E2A38] ${
                   isRecording ? "bg-[#FAFAFA] cursor-default" : ""
                 }`}
                 placeholder={
@@ -477,7 +586,7 @@ export default function Session() {
                   type="file"
                   accept="audio/*"
                   onChange={(event) => void uploadAudioFile(event.target.files?.[0])}
-                  disabled={uploading || !anthropicConfigured}
+                  disabled={uploading || !anthropicConfigured || loading}
                   className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2 text-sm"
                 />
                 {uploading && <p className="text-xs text-[#6B7280] mt-2">Uploading audio...</p>}

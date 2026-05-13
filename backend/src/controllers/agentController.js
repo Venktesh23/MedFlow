@@ -2,6 +2,7 @@ import {
   processAudioSession,
   processTranscriptSession,
 } from "../agents/clinicalDocumentationAgent.js";
+import { enqueueClinicalJob, getClinicalJob } from "../services/agentJobQueue.js";
 import { getNotesByPatientId, getPatientContext } from "../services/mongoService.js";
 import { sendError, sendSuccess } from "../utils/http.js";
 
@@ -87,6 +88,7 @@ export async function runAudioAgent(req, res) {
     appointment_id: appointmentIdFromBody(req.body),
     patient: parseJsonField(req.body.patient),
     appointment: parseJsonField(req.body.appointment),
+    userId: req.user._id,
   });
 
   if (!result.ok) {
@@ -101,8 +103,9 @@ export async function runTranscriptAgent(req, res) {
     transcript: req.body.transcript.trim(),
     patient_id: patientIdFromBody(req.body),
     appointment_id: appointmentIdFromBody(req.body),
-    patient: req.body.patient || {},
-    appointment: req.body.appointment || {},
+    patient: parseJsonField(req.body.patient),
+    appointment: parseJsonField(req.body.appointment),
+    userId: req.user._id,
   });
 
   if (!result.ok) {
@@ -110,6 +113,79 @@ export async function runTranscriptAgent(req, res) {
   }
 
   return sendSuccess(res, result.data, 201);
+}
+
+export async function runAudioAgentAsync(req, res) {
+  const jobId = await enqueueClinicalJob({
+    inputType: "audio",
+    userId: req.user._id,
+    patientId: patientIdFromBody(req.body),
+    appointmentId: appointmentIdFromBody(req.body),
+    payload: {
+      audioBuffer: req.file.buffer,
+      mimetype: req.file.mimetype,
+      patient_id: patientIdFromBody(req.body),
+      appointment_id: appointmentIdFromBody(req.body),
+      patient: parseJsonField(req.body.patient),
+      appointment: parseJsonField(req.body.appointment),
+      userId: req.user._id.toString(),
+    },
+  });
+
+  return sendSuccess(
+    res,
+    {
+      jobId,
+      status: "queued",
+    },
+    202,
+  );
+}
+
+export async function runTranscriptAgentAsync(req, res) {
+  const jobId = await enqueueClinicalJob({
+    inputType: "transcript",
+    userId: req.user._id,
+    patientId: patientIdFromBody(req.body),
+    appointmentId: appointmentIdFromBody(req.body),
+    payload: {
+      transcript: req.body.transcript.trim(),
+      patient_id: patientIdFromBody(req.body),
+      appointment_id: appointmentIdFromBody(req.body),
+      patient: parseJsonField(req.body.patient),
+      appointment: parseJsonField(req.body.appointment),
+      userId: req.user._id.toString(),
+    },
+  });
+
+  return sendSuccess(
+    res,
+    {
+      jobId,
+      status: "queued",
+    },
+    202,
+  );
+}
+
+export async function getAgentJobStatus(req, res) {
+  const jobId = req.params?.jobId?.trim?.();
+  if (!jobId) {
+    return sendError(res, 400, {
+      code: "JOB_ID_REQUIRED",
+      message: "jobId parameter is required.",
+    });
+  }
+
+  const job = await getClinicalJob(jobId, req.user._id);
+  if (!job) {
+    return sendError(res, 404, {
+      code: "JOB_NOT_FOUND",
+      message: "Job not found.",
+    });
+  }
+
+  return sendSuccess(res, job, 200);
 }
 
 export async function getPatientMemory(req, res) {

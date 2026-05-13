@@ -4,6 +4,7 @@ import { Patient } from "../models/Patient.js";
 import { connectMongo, upsertPatient } from "../services/mongoService.js";
 import { parseCalendarCommand, isAnthropicConfigured } from "../services/claudeService.js";
 import { addMinutesToTime, checkConflict } from "./utils/conflictDetection.js";
+import { parseCalendarCommandFallback } from "./utils/calendarFallback.js";
 
 function log(action, message, metadata) {
   const suffix = metadata ? ` ${JSON.stringify(metadata)}` : "";
@@ -14,7 +15,7 @@ function escapeRegex(value = "") {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-async function buildScheduleSnapshotForPrompt() {
+async function buildScheduleSnapshotForPrompt(userId) {
   try {
     await connectMongo();
   } catch {
@@ -25,11 +26,19 @@ async function buildScheduleSnapshotForPrompt() {
   today.setHours(0, 0, 0, 0);
   const startIso = today.toISOString().slice(0, 10);
 
-  const appointments = await Appointment.find({ date: { $gte: startIso } })
-    .populate("patientId")
-    .sort({ date: 1, time: 1 })
-    .limit(250)
-    .lean();
+  const filter = { date: { $gte: startIso } };
+  if (userId) filter.userId = userId;
+
+  let appointments = [];
+  try {
+    appointments = await Appointment.find(filter)
+      .populate("patientId")
+      .sort({ date: 1, time: 1 })
+      .limit(250)
+      .lean();
+  } catch {
+    return "(Could not load appointments from MedFlow.)";
+  }
 
   if (!appointments.length) {
     return "No upcoming appointments from today onward in MedFlow.";
@@ -80,6 +89,44 @@ const CANONICAL_VISIT_TYPES = new Set([
   "consultation",
 ]);
 
+const VALID_INTENTS = new Set(["create", "update", "delete", "query", "chat"]);
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+function isValidDate(value) {
+  return DATE_RE.test(String(value || ""));
+}
+
+function isValidTime(value) {
+  return TIME_RE.test(String(value || ""));
+}
+
+function validateParsedCommand(parsed) {
+  const errors = [];
+
+  if (!VALID_INTENTS.has(parsed.intent)) {
+    errors.push("intent");
+  }
+
+  if (parsed.date && !isValidDate(parsed.date)) {
+    errors.push("date");
+  }
+
+  if (parsed.time && !isValidTime(parsed.time)) {
+    errors.push("time");
+  }
+
+  if (parsed.duration && (!Number.isFinite(parsed.duration) || parsed.duration <= 0)) {
+    errors.push("duration");
+  }
+
+  if (parsed.type && !CANONICAL_VISIT_TYPES.has(parsed.type)) {
+    errors.push("type");
+  }
+
+  return errors;
+}
+
 /** Map LLM or casual wording to a canonical MedFlow visit type, or null. */
 function mapLooseVisitType(raw) {
   if (!raw || typeof raw !== "string") return null;
@@ -127,10 +174,11 @@ function missingCreateFields(parsed) {
   return missing;
 }
 
-async function buildNotesSnapshotForPrompt() {
+async function buildNotesSnapshotForPrompt(userId) {
   try {
     await connectMongo();
-    const notes = await Note.find({})
+    const filter = userId ? { userId } : {};
+    const notes = await Note.find(filter)
       .populate("patientId")
       .sort({ createdAt: -1 })
       .limit(35)
@@ -160,22 +208,52 @@ async function buildNotesSnapshotForPrompt() {
 
 async function parseCommand(command, scheduleSnapshot, conversationHistory, parseOptions = {}) {
   let parsedObj = null;
+  let rawOutput = "";
   try {
-    parsedObj = await parseCalendarCommand(command, {
+    const result = await parseCalendarCommand(command, {
       scheduleSnapshot,
       conversationHistory: conversationHistory || [],
       interactionMode: parseOptions.interactionMode || "chat_assistant",
       notesSnapshot: parseOptions.notesSnapshot,
     });
+    parsedObj = result?.parsed ?? null;
+    rawOutput = result?.raw || "";
   } catch (err) {
     log("Parse", "Claude calendar parse threw", { error: err?.message || String(err) });
   }
 
   if (parsedObj && typeof parsedObj === "object") {
+    const normalized = normalizeParsedCommand(parsedObj);
+    const errors = validateParsedCommand(normalized);
+    if (errors.length === 0) {
+      return {
+        ok: true,
+        data: normalized,
+        rawOutput: JSON.stringify(parsedObj),
+      };
+    }
+
+    return {
+      ok: false,
+      error: {
+        code: "CALENDAR_PARSE_INVALID",
+        message: "Calendar command parsed but contained invalid fields.",
+        details: `Invalid or missing: ${errors.join(", ")}`,
+        rawOutput: rawOutput || JSON.stringify(parsedObj),
+      },
+    };
+  }
+
+  const fallbackParsed = normalizeParsedCommand(
+    parseCalendarCommandFallback(command, new Date()),
+  );
+  const fallbackErrors = validateParsedCommand(fallbackParsed);
+  if (fallbackErrors.length === 0) {
+    log("Parse", "Using deterministic fallback parser", { intent: fallbackParsed.intent });
     return {
       ok: true,
-      data: normalizeParsedCommand(parsedObj),
-      rawOutput: JSON.stringify(parsedObj),
+      data: fallbackParsed,
+      rawOutput: "FALLBACK_PARSER",
     };
   }
 
@@ -185,38 +263,59 @@ async function parseCommand(command, scheduleSnapshot, conversationHistory, pars
       code: "CALENDAR_PARSE_FAILED",
       message: "Unable to parse calendar command.",
       details: "Claude did not return usable structured data.",
-      rawOutput: "",
+      rawOutput,
     },
   };
 }
 
-async function findPatientByName(patientName) {
-  if (!patientName) return null;
+async function findPatientByName(patientName, userId) {
+  if (!patientName) return { patient: null, error: null };
 
-  return Patient.findOne({
-    name: new RegExp(escapeRegex(patientName), "i"),
-  });
-}
+  const filter = { name: new RegExp(escapeRegex(patientName), "i") };
+  if (userId) filter.userId = userId;
 
-async function findAppointment(parsed) {
-  if (parsed.appointmentId) {
-    const byId = await Appointment.findById(parsed.appointmentId).populate("patientId");
-    if (byId) return byId;
+  const matches = await Patient.find(filter)
+    .limit(2)
+    .lean();
+
+  if (matches.length > 1) {
+    return {
+      patient: null,
+      error: {
+        code: "PATIENT_AMBIGUOUS",
+        message: `Multiple patients match "${patientName}". Please specify the full name.`,
+      },
+    };
   }
 
-  if (!parsed.patientName) return null;
-  const patient = await findPatientByName(parsed.patientName);
-  if (!patient) return null;
-
-  const filter = { patientId: patient._id };
-  if (parsed.date) filter.date = parsed.date;
-
-  return Appointment.findOne(filter)
-    .populate("patientId")
-    .sort({ date: 1, time: 1 });
+  return { patient: matches[0] || null, error: null };
 }
 
-async function handleCreate(parsed, doctorName) {
+async function findAppointment(parsed, userId) {
+  if (parsed.appointmentId) {
+    const filter = { _id: parsed.appointmentId };
+    if (userId) filter.userId = userId;
+    const byId = await Appointment.findOne(filter).populate("patientId");
+    if (byId) return { appointment: byId, error: null };
+  }
+
+  if (!parsed.patientName) return { appointment: null, error: null };
+  const patientResult = await findPatientByName(parsed.patientName, userId);
+  if (patientResult.error) return { appointment: null, error: patientResult.error };
+  if (!patientResult.patient) return { appointment: null, error: null };
+
+  const filter = { patientId: patientResult.patient._id };
+  if (parsed.date) filter.date = parsed.date;
+  if (userId) filter.userId = userId;
+
+  const appointment = await Appointment.findOne(filter)
+    .populate("patientId")
+    .sort({ date: 1, time: 1 });
+
+  return { appointment, error: null };
+}
+
+async function handleCreate(parsed, doctorName, userId) {
   parsed = applyCreateIntentDefaults(parsed);
 
   const missing = missingCreateFields(parsed);
@@ -234,7 +333,10 @@ async function handleCreate(parsed, doctorName) {
     parsed.type = "consultation";
   }
 
-  const sameDayAppointments = await Appointment.find({ date: parsed.date })
+  const sameDayFilter = { date: parsed.date };
+  if (userId) sameDayFilter.userId = userId;
+
+  const sameDayAppointments = await Appointment.find(sameDayFilter)
     .populate("patientId")
     .sort({ time: 1 });
 
@@ -264,14 +366,17 @@ async function handleCreate(parsed, doctorName) {
     };
   }
 
-  let patient = await findPatientByName(parsed.patientName);
+  const patientResult = await findPatientByName(parsed.patientName, userId);
+  if (patientResult.error) {
+    return { ok: false, error: patientResult.error };
+  }
+
+  let patient = patientResult.patient;
   if (!patient) {
-    const upsert = await upsertPatient({
-      name: parsed.patientName.trim(),
-      dob: "",
-      contact: "",
-      insurance: "",
-    });
+    const upsert = await upsertPatient(
+      { name: parsed.patientName.trim(), dob: "", contact: "", insurance: "" },
+      userId,
+    );
     if (!upsert.ok) {
       return { ok: false, error: upsert.error };
     }
@@ -290,7 +395,7 @@ async function handleCreate(parsed, doctorName) {
 
   let appointment;
   try {
-    appointment = await Appointment.create({
+    const appointmentData = {
       patientId: patient._id,
       doctorName: doctorName || "Doctor",
       date: parsed.date,
@@ -298,7 +403,9 @@ async function handleCreate(parsed, doctorName) {
       duration: parsed.duration,
       type: parsed.type,
       status: "upcoming",
-    });
+    };
+    if (userId) appointmentData.userId = userId;
+    appointment = await Appointment.create(appointmentData);
     await appointment.populate("patientId");
     log("MongoDB", `Appointment created. ID: ${appointment._id}`);
   } catch (error) {
@@ -327,8 +434,13 @@ async function handleCreate(parsed, doctorName) {
   };
 }
 
-async function handleUpdate(parsed) {
-  const appointment = await findAppointment(parsed);
+async function handleUpdate(parsed, userId) {
+  const lookup = await findAppointment(parsed, userId);
+  if (lookup.error) {
+    return { ok: false, error: lookup.error };
+  }
+
+  const appointment = lookup.appointment;
   if (!appointment) {
     return {
       ok: false,
@@ -343,7 +455,10 @@ async function handleUpdate(parsed) {
   const proposedTime = parsed.time ?? appointment.time;
   const proposedDuration = parsed.duration ?? appointment.duration;
 
-  const sameDayForOverlap = await Appointment.find({ date: proposedDate })
+  const overlapFilter = { date: proposedDate };
+  if (userId) overlapFilter.userId = userId;
+
+  const sameDayForOverlap = await Appointment.find(overlapFilter)
     .populate("patientId")
     .sort({ time: 1 });
 
@@ -379,7 +494,7 @@ async function handleUpdate(parsed) {
 
   if (parsed.date) appointment.date = parsed.date;
   if (parsed.time) appointment.time = parsed.time;
-  if (parsed.duration) appointment.duration = parsed.duration;
+  if (parsed.duration != null) appointment.duration = parsed.duration;
   if (parsed.type) appointment.type = parsed.type;
 
   try {
@@ -410,8 +525,13 @@ async function handleUpdate(parsed) {
   };
 }
 
-async function handleDelete(parsed) {
-  const appointment = await findAppointment(parsed);
+async function handleDelete(parsed, userId) {
+  const lookup = await findAppointment(parsed, userId);
+  if (lookup.error) {
+    return { ok: false, error: lookup.error };
+  }
+
+  const appointment = lookup.appointment;
   if (!appointment) {
     return {
       ok: false,
@@ -471,9 +591,14 @@ function readableAppointmentList(appointments, prefix) {
   return `${prefix}: ${items}`;
 }
 
-async function handleQuery(parsed) {
+async function handleQuery(parsed, userId) {
   if (parsed.queryType === "patient") {
-    const patient = await findPatientByName(parsed.patientName);
+    const patientResult = await findPatientByName(parsed.patientName, userId);
+    if (patientResult.error) {
+      return { ok: false, error: patientResult.error };
+    }
+
+    const patient = patientResult.patient;
     if (!patient) {
       return {
         ok: false,
@@ -484,10 +609,10 @@ async function handleQuery(parsed) {
       };
     }
 
-    const appointment = await Appointment.findOne({
-      patientId: patient._id,
-      status: { $ne: "completed" },
-    })
+    const patientQueryFilter = { patientId: patient._id, status: { $ne: "completed" } };
+    if (userId) patientQueryFilter.userId = userId;
+
+    const appointment = await Appointment.findOne(patientQueryFilter)
       .populate("patientId")
       .sort({ date: 1, time: 1 });
 
@@ -513,14 +638,16 @@ async function handleQuery(parsed) {
     const start = startOfWeek(date);
     const end = new Date(start);
     end.setDate(start.getDate() + 6);
-    appointments = await Appointment.find({
-      date: { $gte: toIsoDate(start), $lte: toIsoDate(end) },
-    })
+    const weekFilter = { date: { $gte: toIsoDate(start), $lte: toIsoDate(end) } };
+    if (userId) weekFilter.userId = userId;
+    appointments = await Appointment.find(weekFilter)
       .populate("patientId")
       .sort({ date: 1, time: 1 });
     messagePrefix = `You have ${appointments.length} appointments this week`;
   } else {
-    appointments = await Appointment.find({ date })
+    const dayFilter = { date };
+    if (userId) dayFilter.userId = userId;
+    appointments = await Appointment.find(dayFilter)
       .populate("patientId")
       .sort({ time: 1 });
     messagePrefix = `You have ${appointments.length} appointments on ${formatDate(date)}`;
@@ -565,14 +692,7 @@ export async function runCalendarAgent(command, options = {}) {
   }
 
   if (!isAnthropicConfigured()) {
-    return {
-      ok: false,
-      error: {
-        code: "ANTHROPIC_NOT_CONFIGURED",
-        message:
-          "The calendar AI agent requires ANTHROPIC_API_KEY in the MedFlow backend environment. Add it to backend/.env and restart the API server.",
-      },
-    };
+    log("Parse", "Anthropic not configured. Using deterministic fallback parser.");
   }
 
   log("Parse", `Command received: "${command}"`);
@@ -593,12 +713,14 @@ export async function runCalendarAgent(command, options = {}) {
   const interactionMode =
     options.interactionMode === "voice_calendar" ? "voice_calendar" : "chat_assistant";
 
+  const userId = options.userId || null;
+
   let notesSnapshot = "";
   if (interactionMode === "chat_assistant") {
-    notesSnapshot = await buildNotesSnapshotForPrompt();
+    notesSnapshot = await buildNotesSnapshotForPrompt(userId);
   }
 
-  const scheduleSnapshot = await buildScheduleSnapshotForPrompt();
+  const scheduleSnapshot = await buildScheduleSnapshotForPrompt(userId);
 
   const parsedResult = await parseCommand(
     command,
@@ -616,13 +738,13 @@ export async function runCalendarAgent(command, options = {}) {
 
   switch (parsed.intent) {
     case "create":
-      return handleCreate(parsed, options.doctorName);
+      return handleCreate(parsed, options.doctorName, userId);
     case "update":
-      return handleUpdate(parsed);
+      return handleUpdate(parsed, userId);
     case "delete":
-      return handleDelete(parsed);
+      return handleDelete(parsed, userId);
     case "query":
-      return handleQuery(parsed);
+      return handleQuery(parsed, userId);
     case "chat":
       return handleChat(parsed);
     default:

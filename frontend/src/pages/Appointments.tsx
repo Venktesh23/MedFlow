@@ -64,17 +64,17 @@ const ChatBubbleIcon = () => (
 
 const CalendarIcon = () => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-    <path d="M8 2V6" stroke="#047857" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M16 2V6" stroke="#047857" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M19 4H5C3.89543 4 3 4.89543 3 6V20C3 21.1046 3.89543 22 5 22H19C20.1046 22 21 21.1046 21 20V6C21 4.89543 20.1046 4 19 4Z" stroke="#047857" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M3 10H21" stroke="#047857" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M8 2V6" stroke="#1E2A38" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M16 2V6" stroke="#1E2A38" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M19 4H5C3.89543 4 3 4.89543 3 6V20C3 21.1046 3.89543 22 5 22H19C20.1046 22 21 21.1046 21 20V6C21 4.89543 20.1046 4 19 4Z" stroke="#1E2A38" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M3 10H21" stroke="#1E2A38" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
   </svg>
 );
 
 const PersonIcon = () => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-    <path d="M19 21V19C19 17.9391 18.5786 16.9217 17.8284 16.1716C17.0783 15.4214 16.0609 15 15 15H9C7.93913 15 6.92172 15.4214 6.17157 16.1716C5.42143 16.9217 5 17.9391 5 19V21" stroke="#047857" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M12 11C14.2091 11 16 9.20914 16 7C16 4.79086 14.2091 3 12 3C9.79086 3 8 4.79086 8 7C8 9.20914 9.79086 11 12 11Z" stroke="#047857" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M19 21V19C19 17.9391 18.5786 16.9217 17.8284 16.1716C17.0783 15.4214 16.0609 15 15 15H9C7.93913 15 6.92172 15.4214 6.17157 16.1716C5.42143 16.9217 5 17.9391 5 19V21" stroke="#1E2A38" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M12 11C14.2091 11 16 9.20914 16 7C16 4.79086 14.2091 3 12 3C9.79086 3 8 4.79086 8 7C8 9.20914 9.79086 11 12 11Z" stroke="#1E2A38" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
   </svg>
 );
 
@@ -129,8 +129,8 @@ function splitTime(time = "") {
 }
 
 function statusClass(status: ScheduleAppointment["status"]) {
-  if (status === "in-progress") return "bg-[#047857] text-white border-[#047857]";
-  if (status === "completed") return "bg-white text-[#047857] border-[#047857]";
+  if (status === "in-progress") return "bg-[#1E2A38] text-white border-[#1E2A38]";
+  if (status === "completed") return "bg-white text-[#1E2A38] border-[#1E2A38]";
   return "bg-[#F3F4F6] text-[#6B7280] border-[#E5E7EB]";
 }
 
@@ -173,7 +173,7 @@ export default function Appointments() {
               type: appointment.type,
               status: appointment.status,
               avatarBg: "#cfe9dc",
-              avatarColor: "#065f46",
+              avatarColor: "#1E2A38",
               date: appointment.date,
             };
           }),
@@ -271,16 +271,16 @@ export default function Appointments() {
   const appointmentSummaries: AppointmentSummary[] = useMemo(
     () => [
       {
-        label: "Today's Appointments",
+        label: "All Appointments",
         value: appointments.length,
         icon: <CalendarIcon />,
-        iconBg: "bg-[rgba(4,120,87,0.10)]",
+        iconBg: "bg-[rgba(30,42,56,0.10)]",
       },
       {
         label: "New Patients",
-        value: new Set(appointments.map((appointment) => appointment.name)).size,
+        value: appointments.filter((appointment) => appointment.type === "new-visit").length,
         icon: <PersonIcon />,
-        iconBg: "bg-[rgba(4,120,87,0.10)]",
+        iconBg: "bg-[rgba(30,42,56,0.10)]",
       },
       {
         label: "Pending Notes",
@@ -332,9 +332,9 @@ export default function Appointments() {
               Appointments
             </h1>
             <p className="text-[#6A7282] text-base leading-6 tracking-[-0.3px] mt-1">
-              <span className="text-[#065f46] font-medium">Chat</span> handles scheduling and questions using your
+              <span className="text-[#1E2A38] font-medium">Chat</span> handles scheduling and questions using your
               appointments and recent notes in MedFlow.{" "}
-              <span className="text-[#065f46] font-medium">Manage calendar</span> (voice) runs the same scheduling
+              <span className="text-[#1E2A38] font-medium">Manage calendar</span> (voice) runs the same scheduling
               actions—book, move, cancel, or ask what&apos;s on your calendar only.
             </p>
           </div>
@@ -342,7 +342,7 @@ export default function Appointments() {
             <button
               type="button"
               onClick={openChatDialog}
-              className="flex flex-1 items-center justify-center gap-2 rounded-[10px] border-2 border-[#047857] bg-white text-[#047857] font-medium text-sm sm:text-base px-4 py-3 min-h-[48px] shadow-sm transition-colors hover:bg-[rgba(4,120,87,0.06)] basis-0 sm:min-w-0"
+              className="flex flex-1 items-center justify-center gap-2 rounded-[10px] border-2 border-[#1E2A38] bg-white text-[#1E2A38] font-medium text-sm sm:text-base px-4 py-3 min-h-[48px] shadow-sm transition-colors hover:bg-[rgba(30,42,56,0.06)] basis-0 sm:min-w-0"
             >
               <ChatBubbleIcon />
               Chat with calendar
@@ -379,15 +379,15 @@ export default function Appointments() {
                 aria-label={speech.isListening ? "Stop recording" : "Start recording"}
                 className={`flex h-20 w-20 items-center justify-center rounded-full shadow-md transition-all ${
                   speech.isListening
-                    ? "bg-[#047857] text-white ring-4 ring-[#047857]/25 scale-[1.02]"
-                    : "bg-white border-2 border-[#047857] text-[#047857] hover:bg-[rgba(4,120,87,0.08)]"
+                    ? "bg-[#1E2A38] text-white ring-4 ring-[#1E2A38]/25 scale-[1.02]"
+                    : "bg-white border-2 border-[#1E2A38] text-[#1E2A38] hover:bg-[rgba(30,42,56,0.08)]"
                 } disabled:opacity-45 disabled:cursor-not-allowed`}
               >
                 <span className="scale-150">
                   <IconMic />
                 </span>
               </button>
-              <p className="mt-3 text-xs font-medium text-[#047857]" aria-live="polite">
+              <p className="mt-3 text-xs font-medium text-[#1E2A38]" aria-live="polite">
                 {speech.isListening ? "Listening… tap again when finished" : "Tap the microphone to speak"}
               </p>
               {!speech.supported && (
@@ -422,7 +422,7 @@ export default function Appointments() {
                 </ul>
                 <div className="pt-3 border-t border-[#E5E7EB]">
                   <p className="text-[13px] font-medium text-[#374151] mb-1.5">Examples:</p>
-                  <p className="text-sm text-[#1A1A2E] leading-relaxed rounded-lg bg-[rgba(4,120,87,0.06)] border border-[rgba(4,120,87,0.15)] px-3 py-2.5">
+                  <p className="text-sm text-[#1A1A2E] leading-relaxed rounded-lg bg-[rgba(30,42,56,0.06)] border border-[rgba(30,42,56,0.15)] px-3 py-2.5">
                     &ldquo;Schedule Maria Lopez for tomorrow at two PM.&rdquo; · &ldquo;Cancel Maria Lopez&apos;s appointment
                     tomorrow.&rdquo;
                   </p>
@@ -529,7 +529,7 @@ export default function Appointments() {
                 onClick={() => setScheduleView("week")}
                 className={`rounded-lg px-4 py-2 text-sm font-medium leading-5 tracking-[-0.15px] transition-colors ${
                   scheduleView === "week"
-                    ? "border border-[#047857] bg-[#047857] text-white hover:bg-[#065f46]"
+                    ? "border border-[#1E2A38] bg-[#1E2A38] text-white hover:bg-[#2d3f52]"
                     : "border border-[#E5E7EB] bg-white text-[#4A5565] hover:bg-gray-50"
                 }`}
               >
@@ -540,7 +540,7 @@ export default function Appointments() {
                 onClick={() => setScheduleView("list")}
                 className={`rounded-lg px-4 py-2 text-sm font-medium leading-5 tracking-[-0.15px] transition-colors ${
                   scheduleView === "list"
-                    ? "border border-[#047857] bg-[#047857] text-white hover:bg-[#065f46]"
+                    ? "border border-[#1E2A38] bg-[#1E2A38] text-white hover:bg-[#2d3f52]"
                     : "border border-[#E5E7EB] bg-white text-[#4A5565] hover:bg-gray-50"
                 }`}
               >
@@ -604,7 +604,7 @@ export default function Appointments() {
                   >
                     <div className="flex items-center gap-6">
                       <div className="flex flex-col items-center w-14 flex-shrink-0">
-                        <span className="text-[#047857] font-bold text-sm leading-5 tracking-[-0.15px]">
+                        <span className="text-[#1E2A38] font-bold text-sm leading-5 tracking-[-0.15px]">
                           {appointment.time}
                         </span>
                         <span className="text-[#6A7282] text-xs leading-4">

@@ -34,7 +34,7 @@ export function ClinicalNotePanel({ note, editable = false, onChange }: Clinical
               onChange={(event) =>
                 onChange?.({ ...note, [field.key]: event.target.value })
               }
-              className="w-full min-h-[88px] resize-none rounded-lg border border-[#E5E7EB] p-3 text-sm text-[#1A1A2E] outline-none focus:border-[#047857]"
+              className="w-full min-h-[88px] resize-none rounded-lg border border-[#E5E7EB] p-3 text-sm text-[#1A1A2E] outline-none focus:border-[#1E2A38]"
             />
           ) : (
             <p className="text-sm leading-6 text-[#6B7280] whitespace-pre-line">

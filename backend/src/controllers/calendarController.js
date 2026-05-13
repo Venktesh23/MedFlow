@@ -18,6 +18,7 @@ export async function handleCalendarCommand(req, res) {
 
   const result = await runCalendarAgent(req.body.command, {
     doctorName: req.user?.name || "Doctor",
+    userId: req.user?._id,
     conversationHistory: normalizeConversationHistory(req.body.history),
     interactionMode,
   });

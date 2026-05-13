@@ -13,6 +13,15 @@ function signToken(user) {
   });
 }
 
+function setAuthCookie(res, token) {
+  res.cookie("medflow_token", token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+}
+
 function publicUser(user) {
   return {
     _id: user._id,
@@ -45,8 +54,11 @@ export async function register(req, res) {
     specialty,
   });
 
+  const token = signToken(user);
+  setAuthCookie(res, token);
+
   return sendSuccess(res, {
-    token: signToken(user),
+    token,
     user: publicUser(user),
   }, 201);
 }
@@ -62,8 +74,27 @@ export async function login(req, res) {
     });
   }
 
+  const token = signToken(user);
+  setAuthCookie(res, token);
+
   return sendSuccess(res, {
-    token: signToken(user),
+    token,
     user: publicUser(user),
   });
+}
+
+export async function getMe(req, res) {
+  return sendSuccess(res, {
+    user: publicUser(req.user),
+  });
+}
+
+export async function logout(req, res) {
+  res.clearCookie("medflow_token", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+  });
+
+  return sendSuccess(res, { ok: true });
 }

@@ -153,18 +153,18 @@ export function CalendarAssistant({
       {visibleMessages.map((message) =>
         message.role === "assistant" ? (
           <div key={message.id} className="flex w-full items-start gap-2">
-            <div className="w-[26px] h-[26px] rounded-full bg-[rgba(4, 120, 87,0.12)] flex items-center justify-center flex-shrink-0 mt-1">
+            <div className="w-[26px] h-[26px] rounded-full bg-[rgba(30, 42, 56,0.12)] flex items-center justify-center flex-shrink-0 mt-1">
               <IconBot />
             </div>
-            <div className="min-w-0 flex-1 bg-[#F4FBF4] border border-[rgba(187,202,191,0.50)] rounded-[0_8px_8px_8px] px-[13px] py-[9px]">
-              <p className="text-[#3C4A42] text-[13px] leading-[19px] whitespace-pre-wrap break-words">
+            <div className="min-w-0 flex-1 bg-[#F0F4F8] border border-[rgba(30,42,56,0.15)] rounded-[0_8px_8px_8px] px-[13px] py-[9px]">
+              <p className="text-[#1E2A38] text-[13px] leading-[19px] whitespace-pre-wrap break-words">
                 {message.text}
               </p>
             </div>
           </div>
         ) : (
           <div key={message.id} className="flex w-full justify-end">
-            <div className="min-w-0 max-w-full sm:max-w-[min(100%,42rem)] bg-[rgba(4, 120, 87,0.12)] border border-[rgba(4, 120, 87,0.22)] rounded-[8px_0_8px_8px] px-[13px] py-[9px]">
+            <div className="min-w-0 max-w-full sm:max-w-[min(100%,42rem)] bg-[rgba(30, 42, 56,0.12)] border border-[rgba(30, 42, 56,0.22)] rounded-[8px_0_8px_8px] px-[13px] py-[9px]">
               <p className="text-[#161D19] text-[13px] leading-[19px] whitespace-pre-wrap break-words text-right">
                 {message.text}
               </p>
@@ -174,11 +174,11 @@ export function CalendarAssistant({
       )}
       {loading && (
         <div className="flex w-full items-start gap-2">
-          <div className="w-[26px] h-[26px] rounded-full bg-[rgba(4, 120, 87,0.12)] flex items-center justify-center flex-shrink-0 mt-1">
+          <div className="w-[26px] h-[26px] rounded-full bg-[rgba(30, 42, 56,0.12)] flex items-center justify-center flex-shrink-0 mt-1">
             <IconBot />
           </div>
-          <div className="min-w-0 flex-1 bg-[#F4FBF4] border border-[rgba(187,202,191,0.50)] rounded-[0_8px_8px_8px] px-[13px] py-[9px]">
-            <p className="text-[#3C4A42] text-[13px] leading-[19px]">
+          <div className="min-w-0 flex-1 bg-[#F0F4F8] border border-[rgba(30,42,56,0.15)] rounded-[0_8px_8px_8px] px-[13px] py-[9px]">
+            <p className="text-[#1E2A38] text-[13px] leading-[19px]">
               Analyzing your schedule and responding…
             </p>
           </div>
@@ -191,13 +191,13 @@ export function CalendarAssistant({
     <div className={shellClass}>
       <div className={messageListClass}>{messageBody}</div>
 
-      <div className="border-t border-[rgba(187,202,191,0.35)] bg-[#F9FAF9] px-[14px] pt-[10px] pb-3 sm:pb-3.5 flex items-center gap-2 shrink-0">
+      <div className="border-t border-[rgba(30,42,56,0.12)] bg-[#F6F8FA] px-[14px] pt-[10px] pb-3 sm:pb-3.5 flex items-center gap-2 shrink-0">
         <button
           type="button"
           className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
             speech.isListening
-              ? "bg-[#047857] text-white"
-              : "bg-[rgba(4, 120, 87,0.08)] text-[#047857] hover:bg-[rgba(4, 120, 87,0.15)]"
+              ? "bg-[#1E2A38] text-white"
+              : "bg-[rgba(30, 42, 56,0.08)] text-[#1E2A38] hover:bg-[rgba(30, 42, 56,0.15)]"
           } disabled:opacity-50`}
           aria-label={speech.supported ? "Voice input" : "Voice input unavailable"}
           onClick={toggleVoice}
@@ -217,12 +217,12 @@ export function CalendarAssistant({
             value={speech.isListening ? speech.fullTranscript : msg}
             onChange={(e) => setMsg(e.target.value)}
             placeholder={inputPlaceholder}
-            className="flex-1 h-[34px] min-w-0 bg-white border border-[rgba(187,202,191,0.60)] rounded-md px-[10px] text-[13px] text-[#161D19] placeholder:text-[rgba(22,29,25,0.50)] outline-none focus:border-[#047857] transition-colors"
+            className="flex-1 h-[34px] min-w-0 bg-white border border-[rgba(187,202,191,0.60)] rounded-md px-[10px] text-[13px] text-[#161D19] placeholder:text-[rgba(22,29,25,0.50)] outline-none focus:border-[#1E2A38] transition-colors"
           />
           <button
             type="submit"
             disabled={loading}
-            className="w-8 h-8 rounded-full bg-[#047857] flex items-center justify-center flex-shrink-0 hover:bg-[#065f46] transition-colors disabled:opacity-60"
+            className="w-8 h-8 rounded-full bg-[#1E2A38] flex items-center justify-center flex-shrink-0 hover:bg-[#1E2A38] transition-colors disabled:opacity-60"
             aria-label="Send"
           >
             <IconSend />

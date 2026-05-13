@@ -171,7 +171,7 @@ export default function PatientProfile() {
             className={`rounded-lg border px-4 py-3 text-sm ${
               saveMessage.includes("Could not")
                 ? "border-red-200 bg-red-50 text-red-800"
-                : "border-emerald-200 bg-emerald-50 text-emerald-900"
+                : "border-[#1E2A38]/20 bg-[#1E2A38]/5 text-[#1E2A38]"
             }`}
           >
             {saveMessage}
@@ -208,7 +208,7 @@ export default function PatientProfile() {
                       required
                       value={form.name}
                       onChange={(event) => setForm((f) => ({ ...f, name: event.target.value }))}
-                      className="mt-1 w-full rounded-lg border border-[#E5E7EB] px-3 py-2 text-[#1A1A2E] outline-none focus:border-[#047857]"
+                      className="mt-1 w-full rounded-lg border border-[#E5E7EB] px-3 py-2 text-[#1A1A2E] outline-none focus:border-[#1E2A38]"
                     />
                   </label>
                   <label className="block text-sm text-[#6B7280]">
@@ -217,7 +217,7 @@ export default function PatientProfile() {
                       value={form.dob}
                       onChange={(event) => setForm((f) => ({ ...f, dob: event.target.value }))}
                       placeholder="e.g. 1985-03-12"
-                      className="mt-1 w-full rounded-lg border border-[#E5E7EB] px-3 py-2 text-[#1A1A2E] outline-none focus:border-[#047857]"
+                      className="mt-1 w-full rounded-lg border border-[#E5E7EB] px-3 py-2 text-[#1A1A2E] outline-none focus:border-[#1E2A38]"
                     />
                   </label>
                   <label className="block text-sm text-[#6B7280]">
@@ -225,7 +225,7 @@ export default function PatientProfile() {
                     <input
                       value={form.contact}
                       onChange={(event) => setForm((f) => ({ ...f, contact: event.target.value }))}
-                      className="mt-1 w-full rounded-lg border border-[#E5E7EB] px-3 py-2 text-[#1A1A2E] outline-none focus:border-[#047857]"
+                      className="mt-1 w-full rounded-lg border border-[#E5E7EB] px-3 py-2 text-[#1A1A2E] outline-none focus:border-[#1E2A38]"
                     />
                   </label>
                   <label className="block text-sm text-[#6B7280]">
@@ -233,7 +233,7 @@ export default function PatientProfile() {
                     <input
                       value={form.insurance}
                       onChange={(event) => setForm((f) => ({ ...f, insurance: event.target.value }))}
-                      className="mt-1 w-full rounded-lg border border-[#E5E7EB] px-3 py-2 text-[#1A1A2E] outline-none focus:border-[#047857]"
+                      className="mt-1 w-full rounded-lg border border-[#E5E7EB] px-3 py-2 text-[#1A1A2E] outline-none focus:border-[#1E2A38]"
                     />
                   </label>
                   <div className="flex flex-wrap gap-2 pt-1">
@@ -270,7 +270,7 @@ export default function PatientProfile() {
                       next.set("edit", "1");
                       setSearchParams(next);
                     }}
-                    className="mt-2 text-sm font-medium text-[#047857] hover:underline"
+                    className="mt-2 text-sm font-medium text-[#1E2A38] hover:underline"
                   >
                     Edit details
                   </button>
@@ -304,7 +304,7 @@ export default function PatientProfile() {
               <h2 className="text-[#1A1A2E] font-semibold mb-4">Visit History</h2>
               <div className="space-y-4">
                 {appointments.map((appointment) => (
-                  <div key={appointment._id} className="border-l-2 border-[#047857] pl-4">
+                  <div key={appointment._id} className="border-l-2 border-[#1E2A38] pl-4">
                     <p className="text-[#1A1A2E] font-medium">{appointment.type}</p>
                     <p className="text-sm text-[#6B7280]">
                       {appointment.date} at {appointment.time} • {appointment.status}

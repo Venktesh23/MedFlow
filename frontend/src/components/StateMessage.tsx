@@ -15,9 +15,9 @@ export function StateMessage({
 }: StateMessageProps) {
   const icon =
     tone === "loading" ? (
-      <span className="h-5 w-5 rounded-full border-2 border-[#047857] border-t-transparent animate-spin" />
+      <span className="h-5 w-5 rounded-full border-2 border-[#1E2A38] border-t-transparent animate-spin" />
     ) : (
-      <span className="h-10 w-10 rounded-full bg-[rgba(4, 120, 87,0.12)] text-[#047857] flex items-center justify-center">
+      <span className="h-10 w-10 rounded-full bg-[rgba(30, 42, 56,0.12)] text-[#1E2A38] flex items-center justify-center">
         {tone === "error" ? "!" : "i"}
       </span>
     );

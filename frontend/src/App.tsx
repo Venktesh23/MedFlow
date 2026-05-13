@@ -24,7 +24,8 @@ const queryClient = new QueryClient();
 function RouteTitle() {
   const location = useLocation();
   const titleMap: Record<string, string> = {
-    "/": "Dashboard",
+    "/": "Login",
+    "/dashboard": "Dashboard",
     "/appointments": "Appointments",
     "/patients": "Patients",
     "/notes": "Notes",
@@ -53,8 +54,9 @@ const App = () => (
         <BrowserRouter>
           <RouteTitle />
           <Routes>
+            <Route path="/" element={<Login />} />
             <Route path="/login" element={<Login />} />
-            <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/appointments" element={<ProtectedRoute><Appointments /></ProtectedRoute>} />
             <Route path="/session/:appointmentId" element={<ProtectedRoute><Session /></ProtectedRoute>} />
             <Route path="/patients" element={<ProtectedRoute><Patients /></ProtectedRoute>} />

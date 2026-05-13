@@ -16,9 +16,11 @@ function todayString() {
  * Ensures a demo patient and today's sample appointment exist (idempotent).
  */
 export async function ensureSampleAppointment(req, res) {
-  let patient = await Patient.findOne({ name: SAMPLE_PATIENT_NAME });
+  const userId = req.user._id;
+  let patient = await Patient.findOne({ name: SAMPLE_PATIENT_NAME, userId });
   if (!patient) {
     patient = await Patient.create({
+      userId,
       name: SAMPLE_PATIENT_NAME,
       dob: "",
       contact: "",
@@ -28,6 +30,7 @@ export async function ensureSampleAppointment(req, res) {
 
   const date = todayString();
   let appointment = await Appointment.findOne({
+    userId,
     patientId: patient._id,
     date,
     time: "10:00",
@@ -35,7 +38,7 @@ export async function ensureSampleAppointment(req, res) {
   });
 
   if (!appointment) {
-    const sameDay = await Appointment.find({ date });
+    const sameDay = await Appointment.find({ date, userId });
     const demoConflict = checkConflict(sameDay, date, "10:00", 30);
     if (demoConflict.hasConflict) {
       await demoConflict.conflictingAppointment.populate("patientId");
@@ -46,6 +49,7 @@ export async function ensureSampleAppointment(req, res) {
     }
 
     appointment = await Appointment.create({
+      userId,
       patientId: patient._id,
       doctorName: req.user?.name || "Doctor",
       date,
@@ -66,7 +70,7 @@ function normalizedDateParam(date) {
 }
 
 export async function listAppointments(req, res) {
-  const filter = {};
+  const filter = { userId: req.user._id };
   if (req.query.date) filter.date = normalizedDateParam(req.query.date);
 
   const appointments = await Appointment.find(filter)
@@ -77,7 +81,7 @@ export async function listAppointments(req, res) {
 }
 
 export async function getAppointmentById(req, res) {
-  const appointment = await Appointment.findById(req.params.id).populate("patientId");
+  const appointment = await Appointment.findOne({ _id: req.params.id, userId: req.user._id }).populate("patientId");
 
   if (!appointment) {
     return sendError(res, 404, {
@@ -94,17 +98,20 @@ export async function createAppointment(req, res) {
   const pid = req.body.patientId?.toString().trim();
 
   if (pid && mongoose.isValidObjectId(pid)) {
-    patient = await Patient.findById(pid);
+    patient = await Patient.findOne({ _id: pid, userId: req.user._id });
   }
 
   if (!patient && req.body.patientName?.toString().trim()) {
     const name = req.body.patientName.toString().trim();
-    const upsert = await upsertPatient({
-      name,
-      dob: req.body.patientDob ?? "",
-      contact: req.body.patientContact ?? "",
-      insurance: req.body.patientInsurance ?? "",
-    });
+    const upsert = await upsertPatient(
+      {
+        name,
+        dob: req.body.patientDob ?? "",
+        contact: req.body.patientContact ?? "",
+        insurance: req.body.patientInsurance ?? "",
+      },
+      req.user._id,
+    );
     if (!upsert.ok) {
       return sendError(res, 400, upsert.error);
     }
@@ -121,7 +128,7 @@ export async function createAppointment(req, res) {
 
   const duration =
     Number(req.body.duration) > 0 ? Number(req.body.duration) : 30;
-  const sameDay = await Appointment.find({ date: req.body.date });
+  const sameDay = await Appointment.find({ date: req.body.date, userId: req.user._id });
   const conflict = checkConflict(sameDay, req.body.date, req.body.time, duration);
   if (conflict.hasConflict) {
     return sendError(res, 400, {
@@ -132,6 +139,7 @@ export async function createAppointment(req, res) {
   }
 
   let appointment = await Appointment.create({
+    userId: req.user._id,
     patientId: patient._id,
     doctorName: req.body.doctorName || req.user?.name || "Doctor",
     date: req.body.date,
@@ -147,7 +155,7 @@ export async function createAppointment(req, res) {
 }
 
 export async function updateAppointment(req, res) {
-  const existing = await Appointment.findById(req.params.id);
+  const existing = await Appointment.findOne({ _id: req.params.id, userId: req.user._id });
   if (!existing) {
     return sendError(res, 404, {
       code: "APPOINTMENT_NOT_FOUND",
@@ -180,7 +188,7 @@ export async function updateAppointment(req, res) {
     updates.duration !== undefined;
 
   if (schedulingChanged) {
-    const sameDay = await Appointment.find({ date: mergedDate });
+    const sameDay = await Appointment.find({ date: mergedDate, userId: req.user._id });
     const others = sameDay.filter((a) => String(a._id) !== String(existing._id));
     const conflict = checkConflict(others, mergedDate, mergedTime, mergedDuration);
     if (conflict.hasConflict) {
@@ -203,7 +211,7 @@ export async function updateAppointment(req, res) {
 
 export async function deleteAppointment(req, res) {
   const id = req.params.id;
-  const appointment = await Appointment.findByIdAndDelete(id);
+  const appointment = await Appointment.findOneAndDelete({ _id: id, userId: req.user._id });
 
   if (!appointment) {
     return sendError(res, 404, {

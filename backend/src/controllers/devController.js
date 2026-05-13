@@ -194,9 +194,11 @@ export async function seedSampleData(req, res) {
 
     for (let p = 0; p < samplePatients.length; p += 1) {
       const patientName = samplePatients[p];
-      let patient = await Patient.findOne({ name: patientName });
+      const userId = req.user._id;
+      let patient = await Patient.findOne({ name: patientName, userId });
       if (!patient) {
         patient = await Patient.create({
+          userId,
           name: patientName,
           dob: "",
           contact: "",
@@ -218,19 +220,21 @@ export async function seedSampleData(req, res) {
         )}`;
 
         let appointment = await Appointment.findOne({
+          userId,
           patientId: patient._id,
           date,
           time,
           type: appointmentType,
         });
         if (!appointment) {
-          const sameDay = await Appointment.find({ date });
+          const sameDay = await Appointment.find({ date, userId });
           const duration = 30;
           const conflict = checkConflict(sameDay, date, time, duration);
           if (conflict.hasConflict) {
             continue;
           }
           appointment = await Appointment.create({
+            userId,
             patientId: patient._id,
             doctorName: req.user?.name || "Doctor",
             date,
@@ -263,6 +267,7 @@ export async function seedSampleData(req, res) {
           const createdAt = new Date(`${date}T${time}:00`);
 
           await Note.create({
+            userId: req.user._id,
             patientId: patient._id,
             appointmentId: appointment._id,
             transcript,
